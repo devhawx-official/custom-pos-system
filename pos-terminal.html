@@ -817,7 +817,8 @@
       document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
       document.getElementById(`tab-${tabId}`).classList.remove('hidden');
 
-      if (location.hash !== `#${tabId}`) history.replaceState(null, '', `#${tabId}`);
+      // home tab -> clean URL, every other tab -> #fragment (see NexusNav.setHash)
+      if (window.NexusNav) NexusNav.setHash(tabId, POS_TABS);
       if (window.NexusNav) NexusNav.sync('pos', tabId);
     }
 
@@ -831,7 +832,7 @@
       } else {
         // Unknown tab id — restore the URL to whatever is actually on screen
         const active = POS_TABS.find(m => !document.getElementById(`tab-${m}`).classList.contains('hidden')) || 'billing';
-        history.replaceState(null, '', `#${active}`);
+        if (window.NexusNav) NexusNav.setHash(active, POS_TABS);
       }
     });
 

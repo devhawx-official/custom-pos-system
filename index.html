@@ -446,7 +446,8 @@
       DASH_TABS.forEach(m => document.getElementById(`module-${m}`).classList.add('hidden'));
       document.getElementById(`module-${tabId}`).classList.remove('hidden');
 
-      if (location.hash !== `#${tabId}`) history.replaceState(null, '', `#${tabId}`);
+      // home tab -> clean URL, every other tab -> #fragment (see NexusNav.setHash)
+      if (window.NexusNav) NexusNav.setHash(tabId, DASH_TABS);
       if (window.NexusNav) NexusNav.sync('dashboard', tabId);
 
       if (tabId === 'sales') initPaymentChart();
@@ -461,7 +462,7 @@
       } else {
         // Unknown tab id — restore the URL to whatever is actually on screen
         const active = DASH_TABS.find(m => !document.getElementById(`module-${m}`).classList.contains('hidden')) || 'overview';
-        history.replaceState(null, '', `#${active}`);
+        if (window.NexusNav) NexusNav.setHash(active, DASH_TABS);
       }
     });
 

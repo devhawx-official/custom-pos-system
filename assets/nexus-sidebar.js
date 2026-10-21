@@ -165,8 +165,11 @@
           + '</a>';
     if (m.tabs) {
       html += '<div class="nx-tabs">';
-      m.tabs.forEach(function (t) {
-        html += '<a class="nx-tab" data-tab="' + t.id + '" href="' + m.href + '#' + t.id + '">'
+      m.tabs.forEach(function (t, i) {
+        // The module's first tab is its home view: link it without a fragment,
+        // so middle-click / copy-link also yields a clean URL.
+        var tabHref = i === 0 ? m.href : m.href + '#' + t.id;
+        html += '<a class="nx-tab" data-tab="' + t.id + '" href="' + tabHref + '">'
               +   '<i class="fa-solid ' + t.icon + '"></i><span>' + t.label + '</span>'
               + '</a>';
       });
@@ -209,7 +212,40 @@
     backdrop.hidden = true;
   }
 
+  /** The first tab of a module is its "home" view (shown at a clean URL). */
+  function homeTabOf(moduleKey) {
+    for (var i = 0; i < MODULES.length; i++) {
+      if (MODULES[i].key === moduleKey && MODULES[i].tabs && MODULES[i].tabs.length) {
+        return MODULES[i].tabs[0].id;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Reflect the active tab in the address bar WITHOUT navigating.
+   *
+   * The module's home tab is written as a clean URL (index.html), every other
+   * tab as a fragment (index.html#margins). Previously every tab — including
+   * the default one — was forced into the URL, so simply opening the dashboard
+   * produced index.html#overview for no reason.
+   */
+  function setHash(tabId, tabs) {
+    if (!tabs || !tabs.length) return;
+    var want = (tabId === tabs[0]) ? '' : '#' + tabId;
+    if (location.hash === want) return;
+    try {
+      history.replaceState(null, '', want || location.href.replace(/#.*$/, ''));
+    } catch (e) {
+      /* Some browsers refuse replaceState for file:// documents. The tab still
+         switches fine — only the address bar keeps its old hash. */
+    }
+  }
+
   function sync(moduleKey, tabId) {
+    // A clean home URL carries no #hash, so an empty id still has to resolve
+    // to a tab — otherwise nothing in the sidebar would light up.
+    if (!tabId) tabId = homeTabOf(moduleKey);
     var groups = sidebar.querySelectorAll('.nx-group');
     Array.prototype.forEach.call(groups, function (g) {
       var isActive = g.getAttribute('data-key') === moduleKey;
@@ -259,5 +295,5 @@
   var hashTab = (location.hash || '').replace('#', '');
   sync(currentModule, hashTab);
 
-  window.NexusNav = { sync: sync, open: openMobile, close: closeMobile };
+  window.NexusNav = { sync: sync, open: openMobile, close: closeMobile, setHash: setHash };
 })();

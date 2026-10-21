@@ -582,9 +582,8 @@
     window.NEXUS_ROUTE_TAB = showCrmSection;
 
     function syncCrmNav() {
-      if (location.hash !== `#${activeCrmSection}`) {
-        history.replaceState(null, '', `#${activeCrmSection}`);
-      }
+      // home section ('crm') -> clean URL, others -> #fragment
+      if (window.NexusNav) NexusNav.setHash(activeCrmSection, CRM_TABS);
       if (window.NexusNav) NexusNav.sync('crm', activeCrmSection);
     }
 
