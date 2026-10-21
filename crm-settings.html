@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexus ERP — CRM, Khata & Settings</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { 
+            sans: ['Inter', 'sans-serif'], 
+            mono: ['JetBrains Mono', 'monospace'] 
+          },
+          colors: {
+            brand: { 500: '#00E5FF', 600: '#00B8D4' },
+            navy: { 900: '#0B0F19', 800: '#111827', 700: '#1E293B', 950: '#060911' }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0B0F19; }
+    ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #00E5FF; }
+    .glass-card { background: rgba(17, 24, 39, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+    .glass-input { background: rgba(6, 9, 17, 0.9); border: 1px solid rgba(51, 65, 85, 0.8); color: #F8FAFC; }
+    .glass-input:focus { border-color: #00E5FF; outline: none; box-shadow: 0 0 10px rgba(0, 229, 255, 0.2); }
+  </style>
+  <!-- LIGHT/DARK THEME
+       The saved choice is applied before first paint so the page never
+       flashes the wrong palette. assets/nexus-theme.css then re-maps the
+       dark utility classes under html[data-theme="light"]. -->
+  <script>
+    try {
+      document.documentElement.setAttribute(
+        'data-theme', localStorage.getItem('nexus_theme') === 'light' ? 'light' : 'dark'
+      );
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  </script>
+  <link rel="stylesheet" href="assets/nexus-theme.css">
+</head>
+<body class="bg-navy-900 text-slate-100 font-sans min-h-screen flex flex-col antialiased selection:bg-cyan-400 selection:text-slate-950">
+
+  <!-- SIDEBAR NAV (shared) -->
+  <script src="assets/nexus-sidebar.js" data-module="crm"></script>
+  <!-- Theme controller: mounts the sidebar toggle -->
+  <script src="assets/nexus-theme.js"></script>
+  <!-- Shared demo seed + localStorage seeding -->
+  <script src="assets/nexus-seed.js"></script>
+
+  <!-- HEADER -->
+  <header class="bg-navy-950 border-b border-navy-700 sticky top-0 z-30 px-6 py-3">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <h1 class="font-bold text-lg tracking-wide text-white">CRM, Khata &amp; System Settings</h1>
+        <p class="hidden md:block text-xs text-slate-400">Customers, Loyalty, RBAC &amp; Hardware</p>
+      </div>
+      <div class="flex items-center gap-2 bg-navy-900 px-3 py-1.5 rounded-xl border border-navy-700 text-xs text-slate-400">
+        <i class="fa-solid fa-shield-halved text-purple-400"></i>
+        <span>Super Admin Session</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="max-w-7xl mx-auto px-4 py-6 flex-grow w-full">
+
+    <!-- ==================== MODULE 5: CRM, LOYALTY & KHATA SYSTEM ==================== -->
+    <section id="mod-crm" class="space-y-6">
+      
+      <!-- Sub Nav & Quick Stats -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="glass-card p-4 rounded-xl flex items-center justify-between">
+          <div>
+            <p class="text-xs text-slate-400 uppercase font-mono">Total CRM Members</p>
+            <h3 id="statTotalCustomers" class="text-xl font-bold text-white mt-1">0</h3>
+          </div>
+          <div class="w-10 h-10 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center text-lg">
+            <i class="fa-solid fa-users"></i>
+          </div>
+        </div>
+
+        <div class="glass-card p-4 rounded-xl flex items-center justify-between">
+          <div>
+            <p class="text-xs text-slate-400 uppercase font-mono">Total Outstanding Khata</p>
+            <h3 id="statTotalKhata" class="text-xl font-bold text-rose-400 mt-1">PKR 0</h3>
+          </div>
+          <div class="w-10 h-10 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center text-lg">
+            <i class="fa-solid fa-book-bookmark"></i>
+          </div>
+        </div>
+
+        <div class="glass-card p-4 rounded-xl flex items-center justify-between">
+          <div>
+            <p class="text-xs text-slate-400 uppercase font-mono">Active Loyalty Points</p>
+            <h3 id="statTotalPoints" class="text-xl font-bold text-amber-400 mt-1">0 Pts</h3>
+          </div>
+          <div class="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center text-lg">
+            <i class="fa-solid fa-award"></i>
+          </div>
+        </div>
+
+        <div class="glass-card p-4 rounded-xl flex items-center justify-between">
+          <div>
+            <p class="text-xs text-slate-400 uppercase font-mono">Platinum Tier Members</p>
+            <h3 id="statPlatinumCount" class="text-xl font-bold text-emerald-400 mt-1">0</h3>
+          </div>
+          <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center text-lg">
+            <i class="fa-solid fa-crown"></i>
+          </div>
+        </div>
+      </div>
+
+      <!-- Customer Directory Table & Actions -->
+      <div class="glass-card rounded-xl overflow-hidden p-5 space-y-4">
+        <div class="flex flex-col sm:flex-row justify-between items-center gap-3">
+          <div class="relative w-full sm:w-72">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+            <input type="text" id="crmSearch" oninput="renderCrmTable()" placeholder="Search Name, Phone or ID..." class="w-full glass-input pl-9 pr-3 py-2 rounded-lg text-xs">
+          </div>
+          <div class="flex gap-2 w-full sm:w-auto">
+            <button onclick="openAddCustomerModal()" class="w-full sm:w-auto bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs flex items-center justify-center gap-2 shadow-lg">
+              <i class="fa-solid fa-user-plus"></i> Add New Customer
+            </button>
+          </div>
+        </div>
+
+        <!-- Directory Table -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-navy-950 text-slate-400 uppercase font-mono border-b border-navy-700">
+              <tr>
+                <th class="p-3">Customer Details</th>
+                <th class="p-3">Tier</th>
+                <th class="p-3">Loyalty Points</th>
+                <th class="p-3">Khata / Outstanding Balance</th>
+                <th class="p-3">Credit Limit</th>
+                <th class="p-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="crmCustomerTableBody" class="divide-y divide-navy-700/50 font-mono">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Loyalty & Khata Config Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Loyalty Rule Configuration -->
+        <div class="glass-card p-5 rounded-xl space-y-4">
+          <h3 class="font-bold text-sm text-white flex items-center gap-2">
+            <i class="fa-solid fa-sliders text-cyan-400"></i> Loyalty Rule Engine Settings
+          </h3>
+          <div class="space-y-3 text-xs">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-slate-400 block mb-1">Earning Rate (PKR per 1 Point)</label>
+                <input type="number" id="loyaltyEarningRate" value="100" class="w-full glass-input p-2 rounded-lg font-mono">
+              </div>
+              <div>
+                <label class="text-slate-400 block mb-1">Point Redemption Value (PKR)</label>
+                <input type="number" id="loyaltyRedeemValue" value="1.0" step="0.1" class="w-full glass-input p-2 rounded-lg font-mono">
+              </div>
+            </div>
+            <div>
+              <label class="text-slate-400 block mb-1">Silver Tier Threshold (Points Required)</label>
+              <input type="number" id="silverThreshold" value="200" class="w-full glass-input p-2 rounded-lg font-mono">
+            </div>
+            <div>
+              <label class="text-slate-400 block mb-1">Gold Tier Threshold (Points Required)</label>
+              <input type="number" id="goldThreshold" value="500" class="w-full glass-input p-2 rounded-lg font-mono">
+            </div>
+            <button onclick="saveLoyaltyRules()" class="w-full py-2 bg-navy-800 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500 hover:text-slate-950 font-bold rounded-lg transition-all">
+              Save Loyalty Parameters
+            </button>
+          </div>
+        </div>
+
+        <!-- Khata Management & Manual Payment -->
+        <div class="glass-card p-5 rounded-xl space-y-4">
+          <h3 class="font-bold text-sm text-white flex items-center gap-2">
+            <i class="fa-solid fa-money-bill-transfer text-emerald-400"></i> Record Khata Recovery / Credit Clearing
+          </h3>
+          <form onsubmit="handleKhataPayment(event)" class="space-y-3 text-xs">
+            <div>
+              <label class="text-slate-400 block mb-1">Select Customer</label>
+              <select id="khataCustomerSelect" class="w-full glass-input p-2 rounded-lg font-mono" required>
+                <!-- Dynamically Populated -->
+              </select>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-slate-400 block mb-1">Received Amount (PKR)</label>
+                <input type="number" id="khataPaymentAmount" min="1" placeholder="0.00" class="w-full glass-input p-2 rounded-lg font-mono" required>
+              </div>
+              <div>
+                <label class="text-slate-400 block mb-1">Payment Method</label>
+                <select id="khataPaymentMode" class="w-full glass-input p-2 rounded-lg font-mono">
+                  <option value="Cash">Cash</option>
+                  <option value="Bank Transfer">Bank Transfer / Raast</option>
+                  <option value="Cheque">Cheque</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="text-slate-400 block mb-1">Remarks / Reference Number</label>
+              <input type="text" id="khataRemarks" placeholder="Payment receipt # or Txn ID" class="w-full glass-input p-2 rounded-lg">
+            </div>
+            <button type="submit" class="w-full py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg transition-all shadow-lg">
+              Record Khata Clearing Entry
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ==================== MODULE 6: SYSTEM SETTINGS & RBAC ==================== -->
+    <section id="mod-settings" class="space-y-6 hidden">
+      
+      <!-- SETTINGS SUB-TABS LIVE IN THE SHARED SIDEBAR -->
+
+      <!-- SETTINGS SECTION 1: ROLE-BASED ACCESS CONTROL (RBAC) -->
+      <div id="set-sec-rbac" class="space-y-4">
+        <div class="glass-card p-5 rounded-xl space-y-4">
+          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <div>
+              <h3 class="font-bold text-sm text-white"><i class="fa-solid fa-shield-halved text-purple-400"></i> Role-Based Access Control Matrix</h3>
+              <p class="text-xs text-slate-400">Configure screen-level and action-level permissions per user role.</p>
+            </div>
+            <button onclick="saveRbacMatrix()" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-lg">
+              Save Role Permissions
+            </button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-navy-950 text-slate-400 font-mono border-b border-navy-700">
+                <tr>
+                  <th class="p-3">Module / Action Permission</th>
+                  <th class="p-3 text-center">Super Admin</th>
+                  <th class="p-3 text-center">Store Manager</th>
+                  <th class="p-3 text-center">Cashier</th>
+                  <th class="p-3 text-center">Inventory Manager</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-navy-700/50 font-mono">
+                <tr class="hover:bg-navy-800/40">
+                  <td class="p-3">
+                    <div class="font-bold text-white">POS Billing Terminal</div>
+                    <div class="text-[10px] text-slate-400">Access counter checkout screen</div>
+                  </td>
+                  <td class="p-3 text-center"><input type="checkbox" checked disabled class="accent-cyan-400"></td>
+                  <td class="p-3 text-center"><input type="checkbox" checked class="accent-cyan-400"></td>
+                  <td class="p-3 text-center"><input type="checkbox" checked class="accent-cyan-400"></td>
+                  <td class="p-3 text-center"><input type="checkbox" class="accent-cyan-400"></td>
+                </tr>
+
+                <tr class="hover:bg-navy-800/40">
+                  <td class="p-3">
+                    <div class="font-bold text-amber-300">Give Manual / Item Line Discount</div>
+                    <div class="text-[10px] text-slate-400">Requires Manager PIN Override if Cashier</div>
+                  </td>
+                  <td class="p-3 text-center"><input type="checkbox" checked disabled class="accent-cyan-400"></td>
+                  <td class="p-3 text-center"><input type="checkbox" checked class="accent-cyan-400"></td>
+                  <td class="p-3 text-center"><input type="checkbox" id="rbac_cashier_discount" class="accent-cyan-400"> <span class="text-[10px] text-rose-400 block">(PIN Required)</span></td>
+                  <td class="p-3 text-center"><input type="checkbox" class="accent-cyan-400"></td>
+                </tr>
+
+                <tr class="hover:bg-navy-800/40">
+                  <td class="p-3">
+                    <div class="font-bold text-white">Inventory Catalog & Stock GRN</div>
+                    <td class="p-3 text-center"><input type="checkbox" checked disabled class="accent-cyan-400"></td>
+                    <td class="p-3 text-center"><input type="checkbox" checked class="accent-cyan-400"></td>
+                    <td class="p-3 text-center"><input type="checkbox" class="accent-cyan-400"></td>
+                    <td class="p-3 text-center"><input type="checkbox" checked class="accent-cyan-400"></td>
+                </tr>
+
+                <tr class="hover:bg-navy-800/40">
+                  <td class="p-3">
+                    <div class="font-bold text-white">CRM & Khata Credit Adjustments</div>
+                  </td>
+                  <td class="p-3 text-center"><input type="checkbox" checked disabled class="accent-cyan-400"></td>
+                  <td class="p-3 text-center"><input type="checkbox" checked class="accent-cyan-400"></td>
+                  <td class="p-3 text-center"><input type="checkbox" class="accent-cyan-400"></td>
+                  <td class="p-3 text-center"><input type="checkbox" class="accent-cyan-400"></td>
+                </tr>
+
+                <tr class="hover:bg-navy-800/40">
+                  <td class="p-3">
+                    <div class="font-bold text-rose-400">Process Returns / Void Invoice</div>
+                  </td>
+                  <td class="p-3 text-center"><input type="checkbox" checked disabled class="accent-cyan-400"></td>
+                  <td class="p-3 text-center"><input type="checkbox" checked class="accent-cyan-400"></td>
+                  <td class="p-3 text-center"><input type="checkbox" class="accent-cyan-400"></td>
+                  <td class="p-3 text-center"><input type="checkbox" class="accent-cyan-400"></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- SETTINGS SECTION 2: HARDWARE & PERIPHERALS -->
+      <div id="set-sec-hardware" class="space-y-4 hidden">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          <!-- Thermal Printer & ESC/POS -->
+          <div class="glass-card p-5 rounded-xl space-y-4">
+            <h3 class="font-bold text-sm text-white flex items-center gap-2">
+              <i class="fa-solid fa-print text-cyan-400"></i> Thermal Receipt Printer Setup
+            </h3>
+            <div class="space-y-3 text-xs font-mono">
+              <div>
+                <label class="text-slate-400 block mb-1">Paper Width</label>
+                <select id="printerWidth" class="w-full glass-input p-2 rounded-lg">
+                  <option value="80mm">80mm (Standard POS Receipt)</option>
+                  <option value="58mm">58mm (Mini Thermal Roll)</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-slate-400 block mb-1">Interface Connection</label>
+                <select id="printerInterface" class="w-full glass-input p-2 rounded-lg">
+                  <option value="USB">USB / Virtual COM Port</option>
+                  <option value="Network">Ethernet / IP Printer (Port 9100)</option>
+                  <option value="Bluetooth">Bluetooth Wireless Printer</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-slate-400 block mb-1">ESC/POS Auto Cash Drawer Kick Command</label>
+                <input type="text" value="ESC p 0 25 250 (ASCII: 27 112 48 25 250)" readonly class="w-full glass-input p-2 rounded-lg text-slate-400">
+              </div>
+              <div class="pt-2 flex gap-2">
+                <button onclick="testPrinter()" class="flex-1 py-2 bg-navy-800 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500 hover:text-slate-950 font-bold rounded-lg transition-all">
+                  Print Test Receipt
+                </button>
+                <button onclick="testDrawer()" class="flex-1 py-2 bg-navy-800 border border-amber-500/30 text-amber-400 hover:bg-amber-500 hover:text-slate-950 font-bold rounded-lg transition-all">
+                  Test Cash Drawer
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Weighing Scale, Barcode Scanner & Pole Display -->
+          <div class="glass-card p-5 rounded-xl space-y-4">
+            <h3 class="font-bold text-sm text-white flex items-center gap-2">
+              <i class="fa-solid fa-weight-scale text-emerald-400"></i> Scales & Pole Display Devices
+            </h3>
+            <div class="space-y-3 text-xs font-mono">
+              <div>
+                <label class="text-slate-400 block mb-1">Electronic Weighing Scale Serial Port</label>
+                <div class="flex gap-2">
+                  <select id="scalePort" class="flex-1 glass-input p-2 rounded-lg">
+                    <option>COM1 - 9600 Baud Rate</option>
+                    <option>COM3 - 4800 Baud Rate</option>
+                    <option value="USB">USB HID Scale Interface</option>
+                  </select>
+                  <button onclick="testScale()" class="px-3 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg font-bold">Read Weight</button>
+                </div>
+              </div>
+
+              <div>
+                <label class="text-slate-400 block mb-1">Barcode Scanner Emulation</label>
+                <select class="w-full glass-input p-2 rounded-lg">
+                  <option>Keyboard Wedge Mode (Auto-Enter suffix)</option>
+                  <option>Virtual Serial COM Mode</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="text-slate-400 block mb-1">Customer Pole Display Welcome Line</label>
+                <input type="text" id="poleMessage" value="WELCOME TO NEXUS SUPERSTORE!" class="w-full glass-input p-2 rounded-lg">
+              </div>
+              <button onclick="testPoleDisplay()" class="w-full py-2 bg-navy-800 border border-purple-500/30 text-purple-300 hover:bg-purple-600 hover:text-white font-bold rounded-lg transition-all">
+                Send Message to Pole Display
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- SETTINGS SECTION 3: GENERAL STORE & RECEIPT HEADER/FOOTER -->
+      <div id="set-sec-general" class="space-y-4 hidden">
+        <div class="glass-card p-5 rounded-xl space-y-4">
+          <h3 class="font-bold text-sm text-white flex items-center gap-2">
+            <i class="fa-solid fa-store text-cyan-400"></i> Store Identity & FBR Tax Configuration
+          </h3>
+          <form onsubmit="saveStoreSettings(event)" class="space-y-4 text-xs font-mono">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="text-slate-400 block mb-1">Store / Branch Name</label>
+                <input type="text" id="storeName" value="Nexus SuperStore (Main Branch)" class="w-full glass-input p-2 rounded-lg font-sans">
+              </div>
+              <div>
+                <label class="text-slate-400 block mb-1">FBR POS Registration Number / STRN</label>
+                <input type="text" id="storeStrn" value="FBR-POS-334918274" class="w-full glass-input p-2 rounded-lg">
+              </div>
+              <div>
+                <label class="text-slate-400 block mb-1">NTN / Business Tax ID</label>
+                <input type="text" id="storeNtn" value="8493021-4" class="w-full glass-input p-2 rounded-lg">
+              </div>
+              <div>
+                <label class="text-slate-400 block mb-1">Default GST Rate (%)</label>
+                <input type="number" id="storeGstRate" value="18.0" step="0.5" class="w-full glass-input p-2 rounded-lg">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="text-slate-400 block mb-1">Receipt Header Custom Note</label>
+                <textarea id="receiptHeader" rows="2" class="w-full glass-input p-2 rounded-lg font-sans">Thank you for shopping with us! Standard return period is 7 days with valid bill.</textarea>
+              </div>
+              <div>
+                <label class="text-slate-400 block mb-1">Receipt Footer Custom Note</label>
+                <textarea id="receiptFooter" rows="2" class="w-full glass-input p-2 rounded-lg font-sans">Software Powered by Nexus ERP • No Refund on Fresh Grocery Items</textarea>
+              </div>
+            </div>
+
+            <button type="submit" class="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-6 py-2 rounded-lg shadow-lg font-sans">
+              Update Store & Tax Settings
+            </button>
+          </form>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ADD CUSTOMER MODAL -->
+  <div id="addCustomerModal" class="fixed inset-0 bg-navy-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="glass-card border border-navy-700 rounded-2xl w-full max-w-md p-6 space-y-4">
+      <div class="flex justify-between items-center border-b border-navy-700 pb-2">
+        <h3 class="font-bold text-sm text-white"><i class="fa-solid fa-user-plus text-cyan-400"></i> New Customer Registration</h3>
+        <button onclick="closeAddCustomerModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form onsubmit="saveCustomer(event)" class="space-y-3 text-xs">
+        <div>
+          <label class="text-slate-400 block mb-1">Full Name</label>
+          <input type="text" id="custName" placeholder="e.g. Tariq Mehmood" class="w-full glass-input p-2 rounded-lg" required>
+        </div>
+        <div>
+          <label class="text-slate-400 block mb-1">Phone Number (Mobile)</label>
+          <input type="text" id="custPhone" placeholder="0300-1234567" class="w-full glass-input p-2 rounded-lg" required>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-slate-400 block mb-1">Membership Tier</label>
+            <select id="custTier" class="w-full glass-input p-2 rounded-lg font-mono">
+              <option value="Bronze">Bronze</option>
+              <option value="Silver">Silver</option>
+              <option value="Gold">Gold</option>
+              <option value="Platinum">Platinum</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Khata Credit Limit (PKR)</label>
+            <input type="number" id="custKhataLimit" value="25000" class="w-full glass-input p-2 rounded-lg font-mono">
+          </div>
+        </div>
+        <div class="pt-2 flex justify-end gap-2">
+          <button type="button" onclick="closeAddCustomerModal()" class="px-4 py-2 bg-navy-800 text-slate-300 rounded-lg">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-cyan-500 text-slate-950 font-bold rounded-lg shadow-lg">Save Customer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- TOAST CONTAINER -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"></div>
+
+  <!-- JAVASCRIPT LOGIC ENGINE -->
+  <script>
+    // LocalStorage Initial Setup
+    // Demo records live in assets/nexus-seed.js (single source of truth).
+    // NexusSeed.get() hands back a fresh deep clone, so mutating customersData
+    // can never leak back into the pristine seed.
+    const CUSTOMER_SEED = NexusSeed.get('nexus_crm_customers');
+
+    // Reads saved customers, but swallows a corrupt value so one bad
+    // localStorage entry can't brick the whole page on load.
+    let customersData = (() => {
+      try {
+        const raw = localStorage.getItem('nexus_crm_customers');
+        if (raw !== null) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (e) { /* corrupt value — fall through and reseed */ }
+
+      // Persist the seed so the Dashboard KPI cards (a separate page that reads
+      // this same key) can show real counts instead of "—".
+      const seed = JSON.parse(JSON.stringify(CUSTOMER_SEED));
+      try { localStorage.setItem('nexus_crm_customers', JSON.stringify(seed)); } catch (e) { /* private mode */ }
+      return seed;
+    })();
+
+    // Monotonic customer ID. Deriving it from customersData.length (as this
+    // used to) re-mints an existing ID after a delete, which makes deleteCustomer
+    // remove two records and posts Khata payments to the wrong person.
+    function nextCustomerId() {
+      const max = customersData.reduce((m, c) => {
+        const n = parseInt(String(c.id).replace(/\D/g, ''), 10);
+        return Number.isFinite(n) && n > m ? n : m;
+      }, 0);
+      return 'CUST-' + String(max + 1).padStart(3, '0');
+    }
+
+    window.onload = function() {
+      renderCrmTable();
+      updateCrmStats();
+      populateKhataDropdown();
+
+      // Open the section requested by the sidebar deep-link (e.g. crm-settings.html#hardware)
+      const hashSec = location.hash.replace('#', '');
+      showCrmSection(CRM_TABS.includes(hashSec) ? hashSec : 'crm');
+    };
+
+    /* ------------------------------------------------------------------ */
+    /* NAVIGATION (module + settings tabs live in the shared sidebar)      */
+    /* sidebar tab ids : crm | rbac | hardware | store                     */
+    /* ------------------------------------------------------------------ */
+    const CRM_TABS = ['crm', 'rbac', 'hardware', 'store'];
+    const SETTINGS_SECTIONS = ['rbac', 'hardware', 'general'];
+    let activeCrmSection = 'crm';        // crm | rbac | hardware | store
+    let activeSettingsSection = 'rbac';  // rbac | hardware | general
+
+    function switchTab(mod) {
+      if (mod === 'crm') {
+        document.getElementById('mod-crm').classList.remove('hidden');
+        document.getElementById('mod-settings').classList.add('hidden');
+        activeCrmSection = 'crm';
+      } else {
+        document.getElementById('mod-crm').classList.add('hidden');
+        document.getElementById('mod-settings').classList.remove('hidden');
+        activeCrmSection = activeSettingsSection === 'general' ? 'store' : activeSettingsSection;
+      }
+      syncCrmNav();
+    }
+
+    function switchSettingsSection(sec) {
+      if (!SETTINGS_SECTIONS.includes(sec)) sec = 'rbac';
+      SETTINGS_SECTIONS.forEach(s => {
+        document.getElementById(`set-sec-${s}`).classList.add('hidden');
+      });
+      document.getElementById(`set-sec-${sec}`).classList.remove('hidden');
+
+      activeSettingsSection = sec;
+      activeCrmSection = (sec === 'general') ? 'store' : sec;
+
+      // make sure the settings MODULE is the visible one
+      document.getElementById('mod-crm').classList.add('hidden');
+      document.getElementById('mod-settings').classList.remove('hidden');
+
+      syncCrmNav();
+    }
+
+    /* one entry point used by the sidebar + deep links */
+    function showCrmSection(sectionId) {
+      if (sectionId === 'crm') {
+        switchTab('crm');
+      } else {
+        switchTab('settings');
+        switchSettingsSection(sectionId === 'store' ? 'general' : sectionId);
+      }
+    }
+    window.NEXUS_ROUTE_TAB = showCrmSection;
+
+    function syncCrmNav() {
+      if (location.hash !== `#${activeCrmSection}`) {
+        history.replaceState(null, '', `#${activeCrmSection}`);
+      }
+      if (window.NexusNav) NexusNav.sync('crm', activeCrmSection);
+    }
+
+    window.addEventListener('hashchange', () => {
+      const t = location.hash.replace('#', '');
+      if (CRM_TABS.includes(t)) {
+        showCrmSection(t);
+      } else {
+        // Unknown tab id — restore the URL to the section actually on screen
+        syncCrmNav();
+      }
+    });
+
+    // CRM Table & Operations
+    function renderCrmTable() {
+      const tbody = document.getElementById('crmCustomerTableBody');
+      const query = document.getElementById('crmSearch').value.toLowerCase();
+      const filtered = customersData.filter(c => c.name.toLowerCase().includes(query) || c.phone.includes(query) || c.id.toLowerCase().includes(query));
+
+      tbody.innerHTML = filtered.map(c => `
+        <tr class="hover:bg-navy-800/40">
+          <td class="p-3">
+            <div class="font-bold text-white">${c.name}</div>
+            <div class="text-[11px] text-slate-400">${c.phone} • <span class="text-cyan-400">${c.id}</span></div>
+          </td>
+          <td class="p-3">
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${getTierBadgeClass(c.tier)}">${c.tier}</span>
+          </td>
+          <td class="p-3 font-bold text-amber-400">${c.points.toLocaleString()} Pts</td>
+          <td class="p-3 font-bold ${c.khataBalance > 0 ? 'text-rose-400' : 'text-emerald-400'}">
+            PKR ${c.khataBalance.toLocaleString()}
+          </td>
+          <td class="p-3 text-slate-400">PKR ${c.khataLimit.toLocaleString()}</td>
+          <td class="p-3 text-right">
+            <button onclick="deleteCustomer('${c.id}')" class="text-rose-400 hover:text-rose-300 p-1"><i class="fa-solid fa-trash"></i></button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function getTierBadgeClass(tier) {
+      switch(tier) {
+        case 'Platinum': return 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+        case 'Gold': return 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
+        case 'Silver': return 'bg-slate-400/20 text-slate-300 border border-slate-400/30';
+        default: return 'bg-orange-500/20 text-orange-400 border border-orange-500/30';
+      }
+    }
+
+    function updateCrmStats() {
+      document.getElementById('statTotalCustomers').innerText = customersData.length;
+      const totalKhata = customersData.reduce((acc, c) => acc + c.khataBalance, 0);
+      document.getElementById('statTotalKhata').innerText = `PKR ${totalKhata.toLocaleString()}`;
+      const totalPts = customersData.reduce((acc, c) => acc + c.points, 0);
+      document.getElementById('statTotalPoints').innerText = `${totalPts.toLocaleString()} Pts`;
+      const platCount = customersData.filter(c => c.tier === 'Platinum').length;
+      document.getElementById('statPlatinumCount').innerText = platCount;
+    }
+
+    function populateKhataDropdown() {
+      const select = document.getElementById('khataCustomerSelect');
+      select.innerHTML = customersData.map(c => `
+        <option value="${c.id}">${c.name} (${c.phone}) - Outstanding: PKR ${c.khataBalance}</option>
+      `).join('');
+    }
+
+    function openAddCustomerModal() { document.getElementById('addCustomerModal').classList.remove('hidden'); }
+    function closeAddCustomerModal() { document.getElementById('addCustomerModal').classList.add('hidden'); }
+
+    function saveCustomer(e) {
+      e.preventDefault();
+      const newCust = {
+        id: nextCustomerId(),
+        name: document.getElementById('custName').value,
+        phone: document.getElementById('custPhone').value,
+        tier: document.getElementById('custTier').value,
+        points: 0,
+        khataLimit: parseFloat(document.getElementById('custKhataLimit').value) || 0,
+        khataBalance: 0
+      };
+      customersData.push(newCust);
+      localStorage.setItem('nexus_crm_customers', JSON.stringify(customersData));
+      renderCrmTable();
+      updateCrmStats();
+      populateKhataDropdown();
+      closeAddCustomerModal();
+      showToast('Customer registered successfully!', 'success');
+    }
+
+    function deleteCustomer(id) {
+      if(confirm('Are you sure you want to delete this customer record?')) {
+        customersData = customersData.filter(c => c.id !== id);
+        localStorage.setItem('nexus_crm_customers', JSON.stringify(customersData));
+        renderCrmTable();
+        updateCrmStats();
+        populateKhataDropdown();
+        showToast('Customer record deleted.', 'info');
+      }
+    }
+
+    function handleKhataPayment(e) {
+      e.preventDefault();
+      const custId = document.getElementById('khataCustomerSelect').value;
+      const amt = parseFloat(document.getElementById('khataPaymentAmount').value);
+      const mode = document.getElementById('khataPaymentMode').value;
+
+      const cust = customersData.find(c => c.id === custId);
+      if(cust) {
+        cust.khataBalance = Math.max(0, cust.khataBalance - amt);
+        localStorage.setItem('nexus_crm_customers', JSON.stringify(customersData));
+        renderCrmTable();
+        updateCrmStats();
+        populateKhataDropdown();
+        document.getElementById('khataPaymentAmount').value = '';
+        showToast(`Recorded PKR ${amt} clearing payment via ${mode} for ${cust.name}`, 'success');
+      }
+    }
+
+    // Hardware Simulations
+    function testPrinter() { showToast('Sending ESC/POS 80mm Test Page signal to printer...', 'info'); }
+    function testDrawer() { showToast('Triggered Cash Drawer pulse command (ESC p 0 25 250)', 'success'); }
+    function testScale() { showToast('Reading COM1 Serial Scale Data: 1.485 KG Registered', 'success'); }
+    function testPoleDisplay() { 
+      const msg = document.getElementById('poleMessage').value;
+      showToast(`Pole Display Updated: "${msg}"`, 'info'); 
+    }
+
+    function saveLoyaltyRules() { showToast('Loyalty point conversion rules updated!', 'success'); }
+    function saveRbacMatrix() { showToast('Role-based access permissions saved!', 'success'); }
+    function saveStoreSettings(e) { 
+      e.preventDefault(); 
+      showToast('Store metadata and tax configurations updated!', 'success'); 
+    }
+
+    function showToast(msg, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `glass-card p-3 rounded-xl border-l-4 ${type==='success'?'border-emerald-400':'border-cyan-400'} text-xs text-white shadow-xl flex items-center gap-2 font-mono`;
+      toast.innerHTML = `<i class="fa-solid fa-circle-check ${type==='success'?'text-emerald-400':'text-cyan-400'}"></i> <span>${msg}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3500);
+    }
+  </script>
+</body>
+</html>

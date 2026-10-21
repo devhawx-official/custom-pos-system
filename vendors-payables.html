@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexus ERP — Vendors & Payables</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            navy: {
+              950: '#060911',
+              900: '#0B0F19',
+              800: '#111827',
+              700: '#1E293B',
+              600: '#334155'
+            },
+            electric: {
+              400: '#38BDF8',
+              500: '#00E5FF',
+              600: '#00B8D4'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #0B0F19;
+      color: #F1F5F9;
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0B0F19;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1E293B;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #00E5FF;
+    }
+
+    /* Glassmorphism & Neon Glow Elements */
+    .glass-card {
+      background: rgba(17, 24, 39, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+    }
+    
+    .glass-input {
+      background: rgba(11, 15, 25, 0.85);
+      border: 1px solid rgba(51, 65, 85, 0.8);
+      color: #F8FAFC;
+    }
+    .glass-input:focus {
+      border-color: #00E5FF;
+      outline: none;
+      box-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
+    }
+
+    .glow-cyan {
+      box-shadow: 0 0 15px rgba(0, 229, 255, 0.2);
+    }
+
+    /* Print styling support */
+    @media print {
+      html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+
+      /* Drop the app UI out of the layout entirely. `body * { visibility: hidden }`
+         still left every element's height in place, and this area normally lives
+         inside a .glass-card whose backdrop-filter makes THAT element the
+         containing block for position:absolute — so the AP table printed ~680px
+         down the page with a blank band above it. printVendorStatement() lifts
+         it to be a direct child of <body> for the print run. */
+      body > *:not(#printable-area) { display: none !important; }
+
+      /* The AP tables are styled for a dark screen (text-slate-300, colored
+         badges). On white paper that is near-invisible, so force dark ink and
+         strip the dark panel backgrounds. */
+      #printable-area, #printable-area * {
+        visibility: visible;
+        color: #000 !important;
+        background: transparent !important;
+        border-color: #999 !important;
+        box-shadow: none !important;
+      }
+      #printable-area {
+        position: static !important;
+        display: block !important;
+        width: 100% !important;
+        overflow: visible !important;
+        background: white !important;
+      }
+      #printable-area th, #printable-area td {
+        border-bottom: 1px solid #bbb !important;
+        padding: 4px 6px !important;
+      }
+    }
+  </style>
+  <!-- LIGHT/DARK THEME
+       The saved choice is applied before first paint so the page never
+       flashes the wrong palette. assets/nexus-theme.css then re-maps the
+       dark utility classes under html[data-theme="light"]. -->
+  <script>
+    try {
+      document.documentElement.setAttribute(
+        'data-theme', localStorage.getItem('nexus_theme') === 'light' ? 'light' : 'dark'
+      );
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  </script>
+  <link rel="stylesheet" href="assets/nexus-theme.css">
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-electric-500 selection:text-slate-950">
+
+  <!-- SIDEBAR NAV (shared) -->
+  <script src="assets/nexus-sidebar.js" data-module="erp"></script>
+  <!-- Theme controller: mounts the sidebar toggle -->
+  <script src="assets/nexus-theme.js"></script>
+  <!-- Shared demo seed + localStorage seeding -->
+  <script src="assets/nexus-seed.js"></script>
+
+  <!-- TOP HEADER -->
+  <header class="bg-navy-900/90 border-b border-navy-700 sticky top-0 z-30 backdrop-blur-md px-4 py-3">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      <!-- Page Title (module nav lives in the sidebar) -->
+      <div class="flex items-center gap-3">
+        <h1 class="font-bold text-lg tracking-tight text-white">Vendors &amp; Payables</h1>
+        <span class="text-[10px] font-mono px-2 py-0.5 bg-electric-500/10 text-electric-500 border border-electric-500/30 rounded-full font-semibold">PAKISTAN EDITION</span>
+        <p class="hidden lg:block text-xs text-slate-400">Supplier Directory &amp; Accounts Payable Ledger</p>
+      </div>
+
+      <!-- Quick Metrics Bar -->
+      <div class="flex items-center gap-3 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 font-mono">
+        <div class="bg-navy-950 border border-navy-700 px-3 py-1.5 rounded-lg flex items-center gap-2.5 min-w-[140px]">
+          <i class="fa-solid fa-file-invoice-dollar text-rose-400 text-base"></i>
+          <div>
+            <p class="text-[9px] text-slate-400 uppercase tracking-wider font-sans">Total AP Due</p>
+            <p id="top-ap-due" class="text-xs font-bold text-rose-400">PKR 0</p>
+          </div>
+        </div>
+
+        <div class="bg-navy-950 border border-navy-700 px-3 py-1.5 rounded-lg flex items-center gap-2.5 min-w-[140px]">
+          <i class="fa-solid fa-triangle-exclamation text-amber-400 text-base"></i>
+          <div>
+            <p class="text-[9px] text-slate-400 uppercase tracking-wider font-sans">Overdue Bills</p>
+            <p id="top-overdue" class="text-xs font-bold text-amber-400">PKR 0</p>
+          </div>
+        </div>
+
+        <div class="bg-navy-950 border border-navy-700 px-3 py-1.5 rounded-lg flex items-center gap-2.5 min-w-[140px]">
+          <i class="fa-solid fa-building-columns text-purple-400 text-base"></i>
+          <div>
+            <p class="text-[9px] text-slate-400 uppercase tracking-wider font-sans">Suppliers</p>
+            <p id="top-suppliers" class="text-xs font-bold text-purple-300">0</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="hidden lg:flex items-center gap-3 border-l border-navy-700 pl-4">
+        <button onclick="resetDataToDemo()" class="px-3 py-1.5 bg-navy-800 hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 border border-navy-700 hover:border-rose-500/30 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5" title="Reset system state with default Pakistani vendor data">
+          <i class="fa-solid fa-rotate-right"></i> Reset Mock Data
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MODULE TABS LIVE IN THE SHARED SIDEBAR -->
+
+  <!-- MAIN WORKSPACE -->
+  <main class="max-w-7xl mx-auto px-4 py-6 flex-grow w-full">
+
+    <!-- ==================== SECTION 3: MODULE 1 - VENDOR DIRECTORY ==================== -->
+    <section id="module-vendors" class="space-y-6">
+      <!-- Filters and Actions -->
+      <div class="glass-card p-4 rounded-xl flex flex-col lg:flex-row items-center justify-between gap-4">
+        <div class="relative w-full lg:w-96">
+          <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+          <input type="text" id="vendor-search" oninput="renderVendors()" placeholder="Search Company, Contact, NTN, Phone..." class="w-full glass-input pl-10 pr-4 py-2 rounded-lg text-sm">
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          <select id="vendor-filter-terms" onchange="renderVendors()" class="glass-input px-3 py-2 rounded-lg text-sm bg-navy-950 text-slate-200">
+            <option value="">All Payment Terms</option>
+            <option value="Net 15">Net 15 Days</option>
+            <option value="Net 30">Net 30 Days</option>
+            <option value="Net 45">Net 45 Days</option>
+            <option value="Cash on Delivery">Cash on Delivery</option>
+          </select>
+
+          <button onclick="openVendorModal()" class="ml-auto bg-electric-500 hover:bg-electric-600 text-slate-950 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-lg glow-cyan">
+            <i class="fa-solid fa-plus"></i> Add New Supplier
+          </button>
+        </div>
+      </div>
+
+      <!-- Vendor Cards Grid -->
+      <div id="vendor-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <!-- Rendered Dynamically -->
+      </div>
+    </section>
+
+    <!-- ==================== SECTION 3: MODULE 2 - SUPPLIER LEDGER & PAYMENTS ==================== -->
+    <section id="module-ledger" class="space-y-6 hidden">
+      <!-- Accounts Payable Overview Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="glass-card p-5 rounded-xl border-l-4 border-rose-500">
+          <p class="text-xs text-slate-400 uppercase tracking-wider font-mono">Total Outstanding Payable</p>
+          <h3 id="ap-total-payable" class="text-2xl font-bold text-rose-400 font-mono mt-1">PKR 0</h3>
+          <p class="text-[11px] text-slate-400 mt-1"><i class="fa-solid fa-circle-exclamation text-rose-400"></i> Across all supplier accounts</p>
+        </div>
+
+        <div class="glass-card p-5 rounded-xl border-l-4 border-amber-500">
+          <p class="text-xs text-slate-400 uppercase tracking-wider font-mono">Overdue Bills</p>
+          <h3 id="ap-overdue-val" class="text-2xl font-bold text-amber-400 font-mono mt-1">PKR 0</h3>
+          <p class="text-[11px] text-amber-400/80 mt-1">Requires immediate settlement</p>
+        </div>
+
+        <div class="glass-card p-5 rounded-xl border-l-4 border-emerald-500">
+          <p class="text-xs text-slate-400 uppercase tracking-wider font-mono">Disbursed This Month</p>
+          <h3 id="ap-paid-month" class="text-2xl font-bold text-emerald-400 font-mono mt-1">PKR 0</h3>
+          <p class="text-[11px] text-emerald-400/80 mt-1"><i class="fa-solid fa-check"></i> Verified bank & cash receipts</p>
+        </div>
+      </div>
+
+      <!-- Pending Bills Log Table -->
+      <div class="glass-card rounded-xl p-5 border border-navy-700">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+          <div>
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-file-invoice text-electric-500"></i> Pending Supplier Invoices & AP Tracking
+            </h2>
+            <p class="text-xs text-slate-400">Manage vendor purchase bills and process direct partial/full disbursements</p>
+          </div>
+          <button onclick="openPaymentModal()" class="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-2 transition-all">
+            <i class="fa-solid fa-hand-holding-dollar"></i> Record Vendor Payment
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm text-slate-300">
+            <thead class="bg-navy-950 text-xs uppercase tracking-wider text-slate-400 border-b border-navy-700">
+              <tr>
+                <th class="py-3.5 px-4">Bill No / Date</th>
+                <th class="py-3.5 px-4">Vendor Name</th>
+                <th class="py-3.5 px-4">Due Date</th>
+                <th class="py-3.5 px-4 font-mono">Total Bill</th>
+                <th class="py-3.5 px-4 font-mono">Paid</th>
+                <th class="py-3.5 px-4 font-mono">Balance</th>
+                <th class="py-3.5 px-4 text-center">Status</th>
+                <th class="py-3.5 px-4 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="pending-bills-table-body" class="divide-y divide-navy-700/60 font-sans">
+              <!-- Rendered Dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Vendor Statement Log Explorer -->
+      <div class="glass-card rounded-xl p-5 border border-navy-700">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-clock-rotate-left text-purple-400"></i> Historical Payment & Debit Log Audit
+          </h2>
+
+          <div class="flex items-center gap-2">
+            <select id="ledger-filter-vendor" onchange="renderLedgerHistory()" class="glass-input px-3 py-1.5 rounded text-xs bg-navy-950 text-slate-200">
+              <option value="">All Vendor Statements</option>
+              <!-- Dynamic Options -->
+            </select>
+            <button onclick="printVendorStatement()" class="bg-navy-700 hover:bg-navy-600 text-slate-200 border border-navy-600 px-3 py-1.5 rounded text-xs font-medium flex items-center gap-1.5">
+              <i class="fa-solid fa-print"></i> Statement PDF
+            </button>
+          </div>
+        </div>
+
+        <div id="printable-area" class="overflow-x-auto">
+          <table class="w-full text-left text-sm text-slate-300">
+            <thead class="bg-navy-950 text-xs uppercase tracking-wider text-slate-400 border-b border-navy-700">
+              <tr>
+                <th class="py-3 px-4">Date & Time</th>
+                <th class="py-3 px-4">Vendor</th>
+                <th class="py-3 px-4">Ref / Transaction ID</th>
+                <th class="py-3 px-4">Mode</th>
+                <th class="py-3 px-4 font-mono text-right">Amount Paid</th>
+                <th class="py-3 px-4">Notes</th>
+              </tr>
+            </thead>
+            <tbody id="ledger-history-body" class="divide-y divide-navy-700/50 font-mono text-xs">
+              <!-- Dynamic Logs -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  <!-- ANALYTICS MODULES LIVE IN THE DASHBOARD (index.html) -->
+
+  </main>
+
+  <!-- ==================== MODALS ==================== -->
+
+  <!-- MODAL 1: ADD / EDIT VENDOR -->
+  <div id="modal-vendor" class="fixed inset-0 bg-navy-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="glass-card border border-navy-700 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+      <div class="px-6 py-4 border-b border-navy-700 flex justify-between items-center bg-navy-800">
+        <h3 id="modal-vendor-title" class="text-base font-bold text-white">Register Supplier Profile</h3>
+        <button onclick="closeVendorModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+      </div>
+
+      <form id="vendor-form" onsubmit="saveVendor(event)" class="p-6 overflow-y-auto space-y-4">
+        <input type="hidden" id="vendor-id">
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Company Name *</label>
+            <input type="text" id="v-name" required placeholder="e.g. Unilever Pakistan Ltd" class="w-full glass-input p-2.5 rounded-lg text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Contact Person *</label>
+            <input type="text" id="v-person" required placeholder="e.g. Tariq Mehmood" class="w-full glass-input p-2.5 rounded-lg text-sm">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Phone Number *</label>
+            <input type="text" id="v-phone" required placeholder="0300-1234567" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Email Address</label>
+            <input type="email" id="v-email" placeholder="orders@supplier.pk" class="w-full glass-input p-2.5 rounded-lg text-sm">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">NTN Number (FBR)</label>
+            <input type="text" id="v-ntn" placeholder="1234567-8" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">STRN (Sales Tax No)</label>
+            <input type="text" id="v-strn" placeholder="07-01-1234-567-89" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Credit Payment Terms</label>
+            <select id="v-terms" class="w-full glass-input p-2.5 rounded-lg text-sm bg-navy-950 text-slate-200">
+              <option value="Net 15">Net 15 Days</option>
+              <option value="Net 30" selected>Net 30 Days</option>
+              <option value="Net 45">Net 45 Days</option>
+              <option value="Cash on Delivery">Cash on Delivery</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Preferred Pay Mode</label>
+            <select id="v-paymode" class="w-full glass-input p-2.5 rounded-lg text-sm bg-navy-950 text-slate-200">
+              <option value="Bank Transfer">Bank Online Transfer</option>
+              <option value="Crossed Cheque">Crossed Cheque</option>
+              <option value="Cash">Cash Disbursement</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Office / Warehouse Address</label>
+          <input type="text" id="v-address" placeholder="PLOT 42, SITE Industrial Area, Karachi" class="w-full glass-input p-2.5 rounded-lg text-sm">
+        </div>
+
+        <div class="pt-4 border-t border-navy-700 flex justify-end gap-3">
+          <button type="button" onclick="closeVendorModal()" class="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white">Cancel</button>
+          <button type="submit" class="bg-electric-500 hover:bg-electric-600 text-slate-950 font-bold px-5 py-2 rounded-lg text-sm shadow-lg glow-cyan">Save Supplier</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 2: VENDOR DETAILS DRAWER / SNAPSHOT -->
+  <div id="modal-vendor-detail" class="fixed inset-0 bg-navy-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="glass-card border border-navy-700 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col">
+      <div class="px-6 py-4 border-b border-navy-700 flex justify-between items-center bg-navy-800">
+        <h3 id="vd-title" class="text-base font-bold text-white">Vendor Details</h3>
+        <button onclick="closeVendorDetailModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+      </div>
+
+      <div class="p-6 space-y-4 font-sans text-sm">
+        <div class="grid grid-cols-2 gap-3 bg-navy-950 p-4 rounded-xl border border-navy-700 text-xs">
+          <div><span class="text-slate-400 block">Contact Person:</span> <strong id="vd-person" class="text-white"></strong></div>
+          <div><span class="text-slate-400 block">Phone:</span> <strong id="vd-phone" class="text-white font-mono"></strong></div>
+          <div><span class="text-slate-400 block">NTN Reg:</span> <strong id="vd-ntn" class="text-electric-400 font-mono"></strong></div>
+          <div><span class="text-slate-400 block">STRN Tax:</span> <strong id="vd-strn" class="text-electric-400 font-mono"></strong></div>
+          <div class="col-span-2"><span class="text-slate-400 block">Address:</span> <strong id="vd-address" class="text-slate-200"></strong></div>
+        </div>
+
+        <div class="glass-card p-4 rounded-xl border border-navy-700 flex justify-between items-center font-mono">
+          <div>
+            <p class="text-xs text-slate-400 uppercase">Current Outstanding Balance</p>
+            <h4 id="vd-balance" class="text-xl font-bold text-rose-400 mt-0.5">PKR 0</h4>
+          </div>
+          <span id="vd-terms-badge" class="px-3 py-1 bg-navy-700 border border-navy-600 rounded text-xs text-slate-300 font-semibold"></span>
+        </div>
+
+        <div class="pt-2 flex justify-end">
+          <button onclick="closeVendorDetailModal()" class="bg-navy-700 hover:bg-navy-600 text-white px-4 py-2 rounded-lg text-xs font-bold">Close Drawer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: RECORD SUPPLIER PAYMENT -->
+  <div id="modal-payment" class="fixed inset-0 bg-navy-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="glass-card border border-navy-700 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
+      <div class="px-6 py-4 border-b border-navy-700 flex justify-between items-center bg-navy-800">
+        <h3 class="text-base font-bold text-white flex items-center gap-2 text-emerald-400">
+          <i class="fa-solid fa-hand-holding-dollar"></i> Record Vendor Disbursement
+        </h3>
+        <button onclick="closePaymentModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+      </div>
+
+      <form onsubmit="savePayment(event)" class="p-6 space-y-4">
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Select Supplier Bill *</label>
+          <select id="pay-bill-id" required onchange="autoFillBillPayAmount()" class="w-full glass-input p-2.5 rounded-lg text-sm bg-navy-950 text-slate-200">
+            <!-- Dynamic list -->
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Payment Amount (PKR) *</label>
+            <input type="number" id="pay-amount" required step="1" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono text-emerald-400 font-bold">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Payment Mode *</label>
+            <select id="pay-mode" required class="w-full glass-input p-2.5 rounded-lg text-sm bg-navy-950 text-slate-200">
+              <option value="Bank Transfer">Bank Online Transfer</option>
+              <option value="Crossed Cheque">Crossed Cheque</option>
+              <option value="Cash">Cash Disbursement</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Transaction Ref / Cheque No *</label>
+          <input type="text" id="pay-ref" required placeholder="e.g. HBL-TRX-992011" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+        </div>
+
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Disbursement Date</label>
+          <input type="date" id="pay-date" required class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+        </div>
+
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Audit Notes / Remark</label>
+          <input type="text" id="pay-notes" placeholder="Settled against invoice clearance" class="w-full glass-input p-2.5 rounded-lg text-sm">
+        </div>
+
+        <div class="pt-4 border-t border-navy-700 flex justify-end gap-3">
+          <button type="button" onclick="closePaymentModal()" class="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white">Cancel</button>
+          <button type="submit" class="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold px-5 py-2 rounded-lg text-sm shadow-lg">Confirm Disbursement</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- TOAST SYSTEM -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2"></div>
+
+  <!-- SYSTEM LOGIC -->
+  <script>
+    // MOCK SEED DATA FOR PAKISTANI SUPERSTORE — now lives in
+    // assets/nexus-seed.js (single source of truth). NexusSeed.get() returns a
+    // fresh deep clone, so live state and the pristine seed are never aliased.
+    const defaultVendors = NexusSeed.get('erp_vendors');
+
+        const defaultBills = NexusSeed.get('erp_bills');
+
+        const defaultLedgerHistory = NexusSeed.get('erp_ledger');
+
+    // STATE INITIALIZATION
+    // Deep-clones the demo seed so live state never aliases it, and swallows
+    // corrupt localStorage values instead of bricking the page on load.
+    function loadState(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw !== null) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (e) { /* corrupt value — fall through and reseed */ }
+
+      // No (or unusable) saved state: fall back to the demo seed AND persist it.
+      // Persisting matters because the Dashboard KPI cards read these exact
+      // localStorage keys from a separate page — without this they showed "—"
+      // until the user happened to edit something here.
+      const seed = JSON.parse(JSON.stringify(fallback));
+      try { localStorage.setItem(key, JSON.stringify(seed)); } catch (e) { /* private mode */ }
+      return seed;
+    }
+
+    let vendors = loadState('erp_vendors', defaultVendors);
+    let bills = loadState('erp_bills', defaultBills);
+    let ledgerHistory = loadState('erp_ledger', defaultLedgerHistory);
+
+    window.onload = function() {
+      // Set today's date on modal inputs
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('pay-date').value = today;
+
+      renderAllModules();
+
+      // Open the tab requested by the sidebar deep-link (e.g. vendors-payables.html#ledger)
+      const hashTab = location.hash.replace('#', '');
+      switchTab(ERP_TABS.includes(hashTab) ? hashTab : 'vendors');
+    };
+
+    function saveState() {
+      localStorage.setItem('erp_vendors', JSON.stringify(vendors));
+      localStorage.setItem('erp_bills', JSON.stringify(bills));
+      localStorage.setItem('erp_ledger', JSON.stringify(ledgerHistory));
+      renderAllModules();
+    }
+
+    function resetDataToDemo() {
+      if(confirm("Reset state back to default Pakistani vendor demo records?")) {
+        // NexusSeed.get() returns a fresh deep clone, so the seed data is never
+        // aliased to live state (which would have made the reset a no-op).
+        vendors = NexusSeed.get('erp_vendors');
+        bills = NexusSeed.get('erp_bills');
+        ledgerHistory = NexusSeed.get('erp_ledger');
+        saveState();
+        showToast("System reset to default mock dataset", "info");
+      }
+    }
+
+    function renderAllModules() {
+      updateAPMetrics();
+      renderVendors();
+      renderBillsTable();
+      renderLedgerHistory();
+      populateLedgerDropdowns();
+    }
+
+    // TAB SWITCHING (tabs live in the shared sidebar)
+    const ERP_TABS = ['vendors', 'ledger'];
+
+    function switchTab(tabId) {
+      if (!ERP_TABS.includes(tabId)) tabId = 'vendors';
+
+      ERP_TABS.forEach(m => {
+        document.getElementById(`module-${m}`).classList.add('hidden');
+      });
+      document.getElementById(`module-${tabId}`).classList.remove('hidden');
+
+      if (location.hash !== `#${tabId}`) history.replaceState(null, '', `#${tabId}`);
+      if (window.NexusNav) NexusNav.sync('erp', tabId);
+
+    }
+
+    /* sidebar hook: switch tabs WITHOUT reloading the page */
+    window.NEXUS_ROUTE_TAB = switchTab;
+
+    window.addEventListener('hashchange', () => {
+      const t = location.hash.replace('#', '');
+      if (ERP_TABS.includes(t)) {
+        switchTab(t);
+      } else {
+        // Unknown tab id — restore the URL to whatever is actually on screen
+        const active = ERP_TABS.find(m => !document.getElementById(`module-${m}`).classList.contains('hidden')) || 'vendors';
+        history.replaceState(null, '', `#${active}`);
+      }
+    });
+
+    // SECTION 3: VENDOR DIRECTORY
+    function renderVendors() {
+      const grid = document.getElementById('vendor-grid');
+      const search = document.getElementById('vendor-search').value.toLowerCase();
+      const termsFilter = document.getElementById('vendor-filter-terms').value;
+
+      const filtered = vendors.filter(v => {
+        const matchesSearch = v.name.toLowerCase().includes(search) || v.person.toLowerCase().includes(search) || (v.ntn && v.ntn.includes(search));
+        const matchesTerms = termsFilter === "" || v.terms === termsFilter;
+        return matchesSearch && matchesTerms;
+      });
+
+      grid.innerHTML = filtered.map(v => `
+        <div class="glass-card rounded-xl p-5 border border-navy-700 hover:border-electric-500/50 transition-all flex flex-col justify-between">
+          <div>
+            <div class="flex justify-between items-start mb-2">
+              <h3 class="font-bold text-white text-base">${v.name}</h3>
+              <span class="px-2 py-0.5 bg-navy-950 border border-navy-600 rounded text-[10px] font-mono text-electric-400">${v.terms}</span>
+            </div>
+            
+            <p class="text-xs text-slate-400 mb-3"><i class="fa-solid fa-user-tie text-slate-500 mr-1"></i> ${v.person} (${v.phone})</p>
+
+            <div class="space-y-1 text-xs font-mono text-slate-300 bg-navy-950/60 p-3 rounded-lg border border-navy-700/50 mb-4">
+              <div><span class="text-slate-500">NTN:</span> ${v.ntn || 'N/A'}</div>
+              <div><span class="text-slate-500">STRN:</span> ${v.strn || 'N/A'}</div>
+              <div><span class="text-slate-500">Mode:</span> ${v.paymode}</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between items-center pt-3 border-t border-navy-700 mb-3">
+              <span class="text-xs text-slate-400">Ledger Payable</span>
+              <span class="font-mono font-bold text-sm ${v.balance > 0 ? 'text-rose-400' : 'text-emerald-400'}">PKR ${v.balance.toLocaleString()}</span>
+            </div>
+
+            <div class="flex gap-2">
+              <button onclick="openVendorDetailModal('${v.id}')" class="flex-1 bg-navy-800 hover:bg-navy-700 text-xs py-2 rounded text-slate-200 font-semibold border border-navy-600 transition-colors">
+                View Profile
+              </button>
+              <button onclick="editVendor('${v.id}')" class="px-3 bg-navy-800 hover:bg-electric-500/20 hover:text-electric-400 text-xs py-2 rounded text-slate-400 border border-navy-600">
+                <i class="fa-solid fa-pen"></i>
+              </button>
+              <button onclick="deleteVendor('${v.id}')" class="px-3 bg-navy-800 hover:bg-rose-500/20 hover:text-rose-400 text-xs py-2 rounded text-slate-400 border border-navy-600">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function openVendorModal() {
+      document.getElementById('modal-vendor-title').innerText = "Register Supplier Profile";
+      document.getElementById('vendor-form').reset();
+      document.getElementById('vendor-id').value = "";
+      document.getElementById('modal-vendor').classList.remove('hidden');
+    }
+
+    function closeVendorModal() {
+      document.getElementById('modal-vendor').classList.add('hidden');
+    }
+
+    function editVendor(id) {
+      const v = vendors.find(x => x.id === id);
+      if(!v) return;
+
+      document.getElementById('modal-vendor-title').innerText = `Edit ${v.name}`;
+      document.getElementById('vendor-id').value = v.id;
+      document.getElementById('v-name').value = v.name;
+      document.getElementById('v-person').value = v.person;
+      document.getElementById('v-phone').value = v.phone;
+      document.getElementById('v-email').value = v.email || '';
+      document.getElementById('v-ntn').value = v.ntn || '';
+      document.getElementById('v-strn').value = v.strn || '';
+      document.getElementById('v-terms').value = v.terms;
+      document.getElementById('v-paymode').value = v.paymode;
+      document.getElementById('v-address').value = v.address || '';
+
+      document.getElementById('modal-vendor').classList.remove('hidden');
+    }
+
+    function saveVendor(e) {
+      e.preventDefault();
+      const id = document.getElementById('vendor-id').value;
+
+      const vData = {
+        id: id || "V-" + Math.floor(100 + Math.random() * 900),
+        name: document.getElementById('v-name').value,
+        person: document.getElementById('v-person').value,
+        phone: document.getElementById('v-phone').value,
+        email: document.getElementById('v-email').value,
+        ntn: document.getElementById('v-ntn').value,
+        strn: document.getElementById('v-strn').value,
+        terms: document.getElementById('v-terms').value,
+        paymode: document.getElementById('v-paymode').value,
+        address: document.getElementById('v-address').value,
+        balance: id ? ((vendors.find(x => x.id === id) || {}).balance || 0) : 0
+      };
+
+      if(id) {
+        const idx = vendors.findIndex(x => x.id === id);
+        vendors[idx] = vData;
+        showToast("Vendor profile updated", "success");
+      } else {
+        vendors.push(vData);
+        showToast("New vendor registered successfully", "success");
+      }
+
+      saveState();
+      closeVendorModal();
+    }
+
+    function deleteVendor(id) {
+      if(confirm("Delete vendor profile from directory?")) {
+        vendors = vendors.filter(x => x.id !== id);
+        saveState();
+        showToast("Vendor removed", "info");
+      }
+    }
+
+    function openVendorDetailModal(id) {
+      const v = vendors.find(x => x.id === id);
+      if(!v) return;
+
+      document.getElementById('vd-title').innerText = v.name;
+      document.getElementById('vd-person').innerText = v.person;
+      document.getElementById('vd-phone').innerText = v.phone;
+      document.getElementById('vd-ntn').innerText = v.ntn || 'N/A';
+      document.getElementById('vd-strn').innerText = v.strn || 'N/A';
+      document.getElementById('vd-address').innerText = v.address || 'N/A';
+      document.getElementById('vd-balance').innerText = `PKR ${v.balance.toLocaleString()}`;
+      document.getElementById('vd-terms-badge').innerText = `Terms: ${v.terms}`;
+
+      document.getElementById('modal-vendor-detail').classList.remove('hidden');
+    }
+
+    function closeVendorDetailModal() {
+      document.getElementById('modal-vendor-detail').classList.add('hidden');
+    }
+
+    // SECTION 3: AP & LEDGER PAYMENTS
+    function updateAPMetrics() {
+      const totalPayable = bills.reduce((sum, b) => sum + (b.total - b.paid), 0);
+      const overdueTotal = bills.filter(b => b.status === 'Overdue').reduce((sum, b) => sum + (b.total - b.paid), 0);
+      const paidThisMonth = ledgerHistory.reduce((sum, l) => sum + l.amount, 0);
+
+      document.getElementById('ap-total-payable').innerText = `PKR ${totalPayable.toLocaleString()}`;
+      document.getElementById('top-ap-due').innerText = `PKR ${totalPayable.toLocaleString()}`;
+      document.getElementById('ap-overdue-val').innerText = `PKR ${overdueTotal.toLocaleString()}`;
+      document.getElementById('top-overdue').innerText = `PKR ${overdueTotal.toLocaleString()}`;
+      document.getElementById('top-suppliers').innerText = vendors.length;
+      document.getElementById('ap-paid-month').innerText = `PKR ${paidThisMonth.toLocaleString()}`;
+    }
+
+    function renderBillsTable() {
+      const tbody = document.getElementById('pending-bills-table-body');
+      tbody.innerHTML = bills.map(b => {
+        const remaining = b.total - b.paid;
+        let badge = `<span class="bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded text-[10px] font-bold">${b.status}</span>`;
+        if(b.status === 'Paid') badge = `<span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded text-[10px] font-bold">PAID</span>`;
+        if(b.status === 'Overdue') badge = `<span class="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded text-[10px] font-bold">OVERDUE</span>`;
+        if(b.status === 'Partial') badge = `<span class="bg-electric-500/10 text-electric-400 border border-electric-500/30 px-2 py-0.5 rounded text-[10px] font-bold">PARTIAL</span>`;
+
+        return `
+          <tr class="hover:bg-navy-800/50">
+            <td class="py-3 px-4 font-mono">
+              <div class="font-bold text-white">${b.id}</div>
+              <div class="text-[11px] text-slate-400">${b.billDate}</div>
+            </td>
+            <td class="py-3 px-4 font-semibold text-slate-200">${b.vendorName}</td>
+            <td class="py-3 px-4 font-mono text-xs text-slate-300">${b.dueDate}</td>
+            <td class="py-3 px-4 font-mono text-slate-300">PKR ${b.total.toLocaleString()}</td>
+            <td class="py-3 px-4 font-mono text-emerald-400">PKR ${b.paid.toLocaleString()}</td>
+            <td class="py-3 px-4 font-mono font-bold text-rose-400">PKR ${remaining.toLocaleString()}</td>
+            <td class="py-3 px-4 text-center">${badge}</td>
+            <td class="py-3 px-4 text-right">
+              ${remaining > 0 ? `
+                <button onclick="quickPayBill('${b.id}')" class="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded text-xs font-bold transition-all">
+                  Pay Bill
+                </button>
+              ` : `<span class="text-xs text-slate-500 font-mono"><i class="fa-solid fa-check text-emerald-400"></i> Cleared</span>`}
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function populateLedgerDropdowns() {
+      const selectBill = document.getElementById('pay-bill-id');
+      const selectVendorLedger = document.getElementById('ledger-filter-vendor');
+
+      selectBill.innerHTML = bills.filter(b => (b.total - b.paid) > 0).map(b => 
+        `<option value="${b.id}">${b.id} - ${b.vendorName} (Rem: PKR ${(b.total - b.paid).toLocaleString()})</option>`
+      ).join('');
+
+      selectVendorLedger.innerHTML = `<option value="">All Vendor Statements</option>` + 
+        vendors.map(v => `<option value="${v.name}">${v.name}</option>`).join('');
+    }
+
+    function openPaymentModal() {
+      populateLedgerDropdowns();
+      autoFillBillPayAmount();
+      document.getElementById('modal-payment').classList.remove('hidden');
+    }
+
+    function closePaymentModal() {
+      document.getElementById('modal-payment').classList.add('hidden');
+    }
+
+    function quickPayBill(billId) {
+      openPaymentModal();
+      document.getElementById('pay-bill-id').value = billId;
+      autoFillBillPayAmount();
+    }
+
+    function autoFillBillPayAmount() {
+      const billId = document.getElementById('pay-bill-id').value;
+      const b = bills.find(x => x.id === billId);
+      if(b) {
+        document.getElementById('pay-amount').value = b.total - b.paid;
+      }
+    }
+
+    function savePayment(e) {
+      e.preventDefault();
+      const billId = document.getElementById('pay-bill-id').value;
+      const amount = parseFloat(document.getElementById('pay-amount').value);
+      const mode = document.getElementById('pay-mode').value;
+      const ref = document.getElementById('pay-ref').value;
+      const date = document.getElementById('pay-date').value;
+      const notes = document.getElementById('pay-notes').value;
+
+      const b = bills.find(x => x.id === billId);
+      if(!b) return;
+
+      const remaining = b.total - b.paid;
+      if(amount > remaining) {
+        alert("Payment amount exceeds remaining unpaid bill balance!");
+        return;
+      }
+
+      b.paid += amount;
+      if(b.paid >= b.total) {
+        b.status = "Paid";
+      } else {
+        b.status = "Partial";
+      }
+
+      // Update vendor balance
+      const v = vendors.find(x => x.id === b.vendorId || x.name === b.vendorName);
+      if(v) {
+        v.balance = Math.max(0, v.balance - amount);
+      }
+
+      // Record in history log
+      ledgerHistory.unshift({
+        id: "TRX-" + Math.floor(100 + Math.random() * 900),
+        date: date + " 14:00",
+        vendorName: b.vendorName,
+        ref: ref,
+        mode: mode,
+        amount: amount,
+        notes: notes || `Settlement for ${b.id}`
+      });
+
+      saveState();
+      closePaymentModal();
+      showToast(`Disbursement of PKR ${amount.toLocaleString()} logged`, "success");
+    }
+
+    function renderLedgerHistory() {
+      const tbody = document.getElementById('ledger-history-body');
+      const vendorFilter = document.getElementById('ledger-filter-vendor').value;
+
+      const filtered = ledgerHistory.filter(l => vendorFilter === "" || l.vendorName === vendorFilter);
+
+      tbody.innerHTML = filtered.map(l => `
+        <tr class="hover:bg-navy-800/40">
+          <td class="py-2.5 px-4 text-slate-400">${l.date}</td>
+          <td class="py-2.5 px-4 font-sans font-bold text-white">${l.vendorName}</td>
+          <td class="py-2.5 px-4 text-electric-400 font-mono">${l.ref}</td>
+          <td class="py-2.5 px-4 text-slate-300 font-sans">${l.mode}</td>
+          <td class="py-2.5 px-4 font-bold text-emerald-400 text-right">PKR ${l.amount.toLocaleString()}</td>
+          <td class="py-2.5 px-4 text-slate-400 font-sans">${l.notes}</td>
+        </tr>
+      `).join('');
+    }
+
+    function printVendorStatement() {
+      printNode(document.getElementById('printable-area'));
+    }
+
+    // Lifts a node to be a direct child of <body> for the duration of the print
+    // run, then puts it back. Nested inside .glass-card it inherits that
+    // element as its containing block (backdrop-filter) and prints hundreds of
+    // pixels down the page, leaving a blank band at the top.
+    function printNode(el) {
+      if (!el) return;
+      const anchor = document.createComment('print-anchor');
+      el.parentNode.insertBefore(anchor, el);
+      document.body.appendChild(el);
+      window.print();                 // blocking — returns when the dialog closes
+      document.body.removeChild(el);
+      anchor.parentNode.insertBefore(el, anchor);
+      anchor.parentNode.removeChild(anchor);
+    }
+
+    // TOAST SYSTEM
+    function showToast(message, type = "info") {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      
+      let bg = "bg-navy-800 border-electric-500 text-white";
+      let icon = "fa-circle-info text-electric-400";
+      if(type === "success") { bg = "bg-navy-800 border-emerald-500 text-white"; icon = "fa-circle-check text-emerald-400"; }
+      if(type === "warning") { bg = "bg-navy-800 border-rose-500 text-white"; icon = "fa-triangle-exclamation text-rose-400"; }
+
+      toast.className = `${bg} border-l-4 p-3.5 rounded-lg shadow-xl text-xs flex items-center gap-3 transition-all transform translate-y-2 opacity-0 font-medium min-w-[280px] z-50`;
+      toast.innerHTML = `<i class="fa-solid ${icon} text-base"></i> <span>${message}</span>`;
+
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexus POS — Billing Terminal</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts: Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              500: '#22c55e',
+              600: '#16a34a',
+              700: '#15803d',
+            },
+            cyber: {
+              blue: '#06b6d4',
+              purple: '#8b5cf6',
+              emerald: '#10b981',
+              amber: '#f59e0b',
+              danger: '#ef4444',
+            },
+            slate: {
+              850: '#131c2e',
+              900: '#0f172a',
+              950: '#080d1a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom Scrollbar for Sleek Dark Mode */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    
+    /* Glassmorphism styling */
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glass-card {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .glass-card:hover {
+      border-color: rgba(6, 182, 212, 0.4);
+    }
+
+    /* Thermal Receipt Print Styles */
+    @media print {
+      /* The receipt lives in a .hidden (display:none) container. The old rule
+         only set visibility:visible, which cannot override display:none, so
+         every sale printed a blank page. Force it visible for the print run. */
+      #printableReceipt { display: block !important; }
+
+      /* body is overflow-hidden + h-full, which clips the receipt to one
+         viewport height in print — let it flow instead. */
+      html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+
+      body * {
+        visibility: hidden;
+      }
+      #printableReceipt, #printableReceipt * {
+        visibility: visible;
+      }
+      #printableReceipt {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 80mm;
+        color: #000;
+        background: #fff;
+        padding: 10px;
+        font-family: monospace;
+      }
+    }
+  </style>
+  <!-- LIGHT/DARK THEME
+       The saved choice is applied before first paint so the page never
+       flashes the wrong palette. assets/nexus-theme.css then re-maps the
+       dark utility classes under html[data-theme="light"]. -->
+  <script>
+    try {
+      document.documentElement.setAttribute(
+        'data-theme', localStorage.getItem('nexus_theme') === 'light' ? 'light' : 'dark'
+      );
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  </script>
+  <link rel="stylesheet" href="assets/nexus-theme.css">
+</head>
+<body class="h-full flex flex-col font-sans overflow-hidden select-none bg-slate-950 text-slate-200">
+
+  <!-- SIDEBAR NAV (shared) -->
+  <script src="assets/nexus-sidebar.js" data-module="pos"></script>
+  <!-- Theme controller: mounts the sidebar toggle -->
+  <script src="assets/nexus-theme.js"></script>
+
+  <!-- ================= TOP HEADER / POS BAR ================= -->
+  <header class="h-16 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between shrink-0 z-20">
+    <div class="flex items-center gap-3">
+      <h1 class="font-bold text-lg tracking-wide text-white">Billing &amp; POS Terminal</h1>
+      <span class="text-[10px] font-mono px-2 py-0.5 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 rounded-full font-semibold">TERMINAL POS-001</span>
+    </div>
+
+    <!-- Right Header Badges & Clock -->
+    <div class="flex items-center space-x-4">
+      <div class="hidden md:flex items-center space-x-3 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 text-xs">
+        <div class="flex items-center space-x-1.5">
+          <span class="text-slate-500">Shift ID:</span>
+          <span class="font-mono text-emerald-400 font-bold" id="headerShiftId">#SH-8842</span>
+        </div>
+      </div>
+
+      <!-- Live Clock -->
+      <div class="text-right hidden sm:block font-mono">
+        <div id="clockTime" class="text-sm font-bold text-slate-200 leading-none">12:00:00 PM</div>
+        <div id="clockDate" class="text-[10px] text-slate-400 mt-1">Oct 20, 2026</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= MAIN CONTENT WRAPPER ================= -->
+  <main class="flex-1 relative overflow-hidden bg-slate-950">
+
+    <!-- ------------------------------------------------------------------- -->
+    <!-- TAB 1: BILLING TERMINAL -->
+    <!-- ------------------------------------------------------------------- -->
+    <section id="tab-billing" class="tab-content h-full flex flex-col md:flex-row gap-0 overflow-hidden">
+      
+      <!-- Left / Top: Catalog & Fast Item Lookup (60% width) -->
+      <div class="flex-1 flex flex-col h-full border-r border-slate-800/80 bg-slate-950 overflow-hidden">
+        
+        <!-- Search & Barcode Scan Bar -->
+        <div class="p-3 bg-slate-900/60 border-b border-slate-800 flex flex-col sm:flex-row gap-2 shrink-0">
+          <div class="relative flex-1">
+            <i class="fa-solid fa-barcode absolute left-3.5 top-1/2 -translate-y-1/2 text-cyan-400 text-lg"></i>
+            <input type="text" id="barcodeInput" placeholder="Scan Barcode or Type SKU... (Press Enter)" 
+              class="w-full bg-slate-950 text-slate-100 placeholder-slate-500 text-sm pl-11 pr-10 py-2.5 rounded-xl border border-cyan-500/30 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 outline-none transition font-mono">
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400 border border-slate-700">SCAN</span>
+          </div>
+
+          <div class="relative flex-1">
+            <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+            <input type="text" id="searchInput" onkeyup="filterProducts()" placeholder="Search Item by Name / Code..." 
+              class="w-full bg-slate-950 text-slate-100 placeholder-slate-500 text-sm pl-10 pr-4 py-2.5 rounded-xl border border-slate-800 focus:border-slate-600 outline-none transition">
+          </div>
+        </div>
+
+        <!-- Category Pills Bar -->
+        <div class="px-3 py-2 bg-slate-900/40 border-b border-slate-800/60 overflow-x-auto flex items-center space-x-2 shrink-0 scrollbar-none">
+          <button onclick="filterCategory('All', this)" class="cat-pill active px-3.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">
+            <i class="fa-solid fa-border-all mr-1"></i> All Items
+          </button>
+          <button onclick="filterCategory('Fruits & Veggies', this)" class="cat-pill px-3.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition text-slate-400 bg-slate-900 border border-slate-800 hover:text-slate-200">
+            <i class="fa-solid fa-apple-whole mr-1 text-emerald-400"></i> Fruits & Veggies
+          </button>
+          <button onclick="filterCategory('Bakery', this)" class="cat-pill px-3.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition text-slate-400 bg-slate-900 border border-slate-800 hover:text-slate-200">
+            <i class="fa-solid fa-bread-slice mr-1 text-amber-400"></i> Bakery
+          </button>
+          <button onclick="filterCategory('Beverages', this)" class="cat-pill px-3.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition text-slate-400 bg-slate-900 border border-slate-800 hover:text-slate-200">
+            <i class="fa-solid fa-wine-bottle mr-1 text-blue-400"></i> Beverages
+          </button>
+          <button onclick="filterCategory('Snacks', this)" class="cat-pill px-3.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition text-slate-400 bg-slate-900 border border-slate-800 hover:text-slate-200">
+            <i class="fa-solid fa-cookie mr-1 text-orange-400"></i> Snacks
+          </button>
+          <button onclick="filterCategory('Dairy & Eggs', this)" class="cat-pill px-3.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition text-slate-400 bg-slate-900 border border-slate-800 hover:text-slate-200">
+            <i class="fa-solid fa-egg mr-1 text-yellow-300"></i> Dairy & Eggs
+          </button>
+        </div>
+
+        <!-- Product Grid Area -->
+        <div class="flex-1 p-3 overflow-y-auto">
+          <div id="productGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+            <!-- Dynamic product cards rendered by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Cart & Checkout Section (40% width) -->
+      <div class="w-full md:w-[420px] lg:w-[460px] bg-slate-900/90 flex flex-col h-full border-l border-slate-800 shrink-0">
+        
+        <!-- Customer & Order Header -->
+        <div class="p-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <button onclick="openCustomerModal()" class="flex items-center space-x-2 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-xs px-2.5 py-1.5 rounded-lg transition text-slate-300">
+              <i class="fa-solid fa-user-tag text-cyan-400"></i>
+              <span id="cartCustomerName" class="font-medium truncate max-w-[120px]">Walk-in Customer</span>
+              <i class="fa-solid fa-chevron-down text-[10px] text-slate-500"></i>
+            </button>
+            <span id="customerPointsBadge" class="hidden text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono">
+              0 Pts
+            </span>
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <button onclick="clearCart()" class="p-2 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-rose-400 rounded-lg border border-slate-800 transition text-xs font-semibold" title="Clear Cart">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Cart Items List -->
+        <div class="flex-1 overflow-y-auto p-3 space-y-2" id="cartContainer">
+          <!-- Dynamic Cart Items Rendered Here -->
+        </div>
+
+        <!-- Coupon & Promo Code Bar -->
+        <div class="px-3 py-2 bg-slate-950/60 border-t border-slate-800 flex items-center gap-2">
+          <div class="relative flex-1">
+            <i class="fa-solid fa-ticket absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+            <input type="text" id="couponInput" placeholder="Promo Code (e.g. SAVE10)" class="w-full bg-slate-900 text-xs text-slate-200 placeholder-slate-500 pl-8 pr-3 py-1.5 rounded-lg border border-slate-800 focus:border-cyan-500/50 outline-none uppercase font-mono">
+          </div>
+          <button onclick="applyCoupon()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-400 text-xs font-semibold rounded-lg border border-slate-700 transition">
+            Apply
+          </button>
+        </div>
+
+        <!-- Order Summary Calc Panel -->
+        <div class="p-3 bg-slate-950 border-t border-slate-800 space-y-1.5 text-xs">
+          <div class="flex justify-between text-slate-400">
+            <span>Subtotal</span>
+            <span id="summarySubtotal" class="font-mono text-slate-200">$0.00</span>
+          </div>
+          <div id="discountRow" class="flex justify-between text-emerald-400 hidden">
+            <span class="flex items-center gap-1">
+              <span>Discount</span>
+              <span id="discountTag" class="text-[10px] bg-emerald-500/20 border border-emerald-500/30 px-1.5 rounded">0%</span>
+            </span>
+            <span id="summaryDiscount" class="font-mono">-$0.00</span>
+          </div>
+          <div class="flex justify-between text-slate-400">
+            <span>Estimated Tax (8%)</span>
+            <span id="summaryTax" class="font-mono text-slate-200">$0.00</span>
+          </div>
+          <div class="pt-2 border-t border-slate-800/80 flex justify-between items-baseline">
+            <div>
+              <span class="text-sm font-bold text-slate-100">Grand Total</span>
+              <span class="text-[10px] text-slate-500 block">Includes Taxes & Fees</span>
+            </div>
+            <div id="summaryGrandTotal" class="text-2xl font-black font-mono text-cyan-400">$0.00</div>
+          </div>
+        </div>
+
+        <!-- Action Control Buttons -->
+        <div class="p-3 bg-slate-900 border-t border-slate-800 grid grid-cols-12 gap-2">
+          <button onclick="triggerCashDrawer()" class="col-span-3 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-xl border border-slate-700 transition flex flex-col items-center justify-center gap-1 text-[11px]">
+            <i class="fa-solid fa-vault text-amber-400 text-sm"></i>
+            <span>Drawer</span>
+          </button>
+          
+          <button onclick="openPaymentModal()" class="col-span-9 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-base rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center space-x-2">
+            <i class="fa-solid fa-credit-card"></i>
+            <span>PAY NOW</span>
+            <span id="payBtnAmount" class="font-mono font-black ml-1">($0.00)</span>
+          </button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------------- -->
+    <!-- TAB 2: RETURN & REFUND SCREEN -->
+    <!-- ------------------------------------------------------------------- -->
+    <section id="tab-returns" class="tab-content h-full hidden p-4 sm:p-6 overflow-y-auto">
+      <div class="max-w-5xl mx-auto space-y-6">
+        
+        <!-- Top Search Header Card -->
+        <div class="glass-panel p-5 rounded-2xl border border-slate-800 shadow-xl">
+          <h2 class="text-lg font-bold text-slate-100 mb-1 flex items-center gap-2">
+            <i class="fa-solid fa-rotate-left text-cyan-400"></i>
+            Process Customer Return & Refund
+          </h2>
+          <p class="text-xs text-slate-400 mb-4">Lookup original invoice barcode or receipt number to initiate item return validation.</p>
+          
+          <div class="flex flex-col sm:flex-row gap-3">
+            <div class="relative flex-1">
+              <i class="fa-solid fa-receipt absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+              <input type="text" id="returnInvoiceInput" placeholder="Enter Receipt No. (e.g. REC-1001 or REC-1002)..." 
+                class="w-full bg-slate-950 text-slate-100 placeholder-slate-500 text-sm pl-10 pr-4 py-3 rounded-xl border border-slate-800 focus:border-cyan-500 outline-none font-mono">
+            </div>
+            <button onclick="searchReturnInvoice()" class="px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm rounded-xl transition shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <span>Find Invoice</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Invoice Result Display -->
+        <div id="returnInvoiceResult" class="hidden glass-panel p-6 rounded-2xl border border-slate-800 space-y-6">
+          
+          <!-- Invoice Meta Info Header -->
+          <div class="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
+            <div>
+              <div class="text-xs text-slate-500">Invoice Reference</div>
+              <div id="returnRecId" class="text-lg font-bold font-mono text-cyan-400">REC-1001</div>
+            </div>
+            <div>
+              <div class="text-xs text-slate-500">Transaction Date</div>
+              <div id="returnRecDate" class="text-sm font-semibold text-slate-200">Today, 10:24 AM</div>
+            </div>
+            <div>
+              <div class="text-xs text-slate-500">Customer</div>
+              <div id="returnRecCustomer" class="text-sm font-semibold text-slate-200">Sarah Jenkins (Loyalty)</div>
+            </div>
+            <div>
+              <div class="text-xs text-slate-500">Original Total</div>
+              <div id="returnRecTotal" class="text-sm font-bold font-mono text-emerald-400">$48.50</div>
+            </div>
+          </div>
+
+          <!-- Items Return Table -->
+          <div>
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Select Items to Return</h3>
+            <div class="overflow-x-auto border border-slate-800 rounded-xl">
+              <table class="w-full text-left text-xs text-slate-300">
+                <thead class="bg-slate-900/80 text-slate-400 border-b border-slate-800 font-semibold uppercase">
+                  <tr>
+                    <th class="p-3 w-10">Select</th>
+                    <th class="p-3">Item Name</th>
+                    <th class="p-3 text-center">Purchased Qty</th>
+                    <th class="p-3 text-center">Return Qty</th>
+                    <th class="p-3">Return Reason</th>
+                    <th class="p-3 text-right">Refund Value</th>
+                  </tr>
+                </thead>
+                <tbody id="returnTableBody" class="divide-y divide-slate-800/60">
+                  <!-- Dynamic return rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Refund Options & Process -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-800">
+            <!-- Refund Destination Options -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-2">Refund Method</label>
+              <div class="grid grid-cols-3 gap-2">
+                <label class="cursor-pointer border border-slate-800 rounded-xl p-3 bg-slate-900 flex flex-col items-center gap-1 hover:border-cyan-500/50 transition [&:has(:checked)]:border-cyan-500 [&:has(:checked)]:bg-cyan-500/10">
+                  <input type="radio" name="refundMethod" value="cash" checked class="hidden">
+                  <i class="fa-solid fa-money-bill-wave text-emerald-400 text-lg"></i>
+                  <span class="text-xs font-medium">Cash</span>
+                </label>
+                <label class="cursor-pointer border border-slate-800 rounded-xl p-3 bg-slate-900 flex flex-col items-center gap-1 hover:border-cyan-500/50 transition [&:has(:checked)]:border-cyan-500 [&:has(:checked)]:bg-cyan-500/10">
+                  <input type="radio" name="refundMethod" value="card" class="hidden">
+                  <i class="fa-solid fa-credit-card text-cyan-400 text-lg"></i>
+                  <span class="text-xs font-medium">Card Reversal</span>
+                </label>
+                <label class="cursor-pointer border border-slate-800 rounded-xl p-3 bg-slate-900 flex flex-col items-center gap-1 hover:border-cyan-500/50 transition [&:has(:checked)]:border-cyan-500 [&:has(:checked)]:bg-cyan-500/10">
+                  <input type="radio" name="refundMethod" value="credit" class="hidden">
+                  <i class="fa-solid fa-ticket text-amber-400 text-lg"></i>
+                  <span class="text-xs font-medium">Store Credit</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Total Calculation & Execute -->
+            <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+              <div class="flex justify-between items-center mb-3">
+                <span class="text-xs text-slate-400">Total Approved Refund:</span>
+                <span id="totalRefundAmount" class="text-2xl font-black font-mono text-emerald-400">$0.00</span>
+              </div>
+              <button onclick="processRefund()" class="w-full py-3 bg-rose-500 hover:bg-rose-400 text-white font-bold text-sm rounded-xl transition shadow-lg shadow-rose-500/20 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-check-circle"></i>
+                <span>Complete Return & Issue Refund</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------------- -->
+    <!-- TAB 3: SHIFT & CASH MANAGEMENT -->
+    <!-- ------------------------------------------------------------------- -->
+    <section id="tab-shift" class="tab-content h-full hidden p-4 sm:p-6 overflow-y-auto">
+      <div class="max-w-6xl mx-auto space-y-6">
+        
+        <!-- Shift Top Banner -->
+        <div class="glass-panel p-5 rounded-2xl border border-slate-800 flex flex-wrap items-center justify-between gap-4">
+          <div class="flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-xl font-bold">
+              <i class="fa-solid fa-user-shield"></i>
+            </div>
+            <div>
+              <div class="flex items-center space-x-2">
+                <h2 class="text-base font-bold text-slate-100">Current Shift Status</h2>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">OPEN & ACTIVE</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-0.5">Cashier: <strong class="text-slate-200">John Doe</strong> | Opened at 08:00 AM Today</p>
+            </div>
+          </div>
+
+          <div class="flex items-center space-x-3">
+            <button onclick="openCashModal('in')" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-500/30 font-semibold text-xs rounded-xl transition flex items-center gap-1.5">
+              <i class="fa-solid fa-plus-circle"></i>
+              <span>Cash IN</span>
+            </button>
+            <button onclick="openCashModal('out')" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-rose-400 border border-rose-500/30 font-semibold text-xs rounded-xl transition flex items-center gap-1.5">
+              <i class="fa-solid fa-minus-circle"></i>
+              <span>Cash OUT</span>
+            </button>
+            <button onclick="generateReport('z')" class="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs rounded-xl transition shadow-lg shadow-cyan-500/20">
+              End Shift (Z-Report)
+            </button>
+          </div>
+        </div>
+
+        <!-- Shift Live Summary KPI Grid -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="glass-card p-4 rounded-xl border border-slate-800">
+            <div class="text-xs text-slate-400">Opening Float</div>
+            <div id="shiftFloatVal" class="text-xl font-bold font-mono text-slate-100 mt-1">$200.00</div>
+            <div class="text-[10px] text-slate-500 mt-1">Starting drawer balance</div>
+          </div>
+
+          <div class="glass-card p-4 rounded-xl border border-slate-800">
+            <div class="text-xs text-slate-400">Cash Sales Total</div>
+            <div id="shiftCashSalesVal" class="text-xl font-bold font-mono text-emerald-400 mt-1">$412.50</div>
+            <div class="text-[10px] text-emerald-500/80 mt-1">From 18 transactions</div>
+          </div>
+
+          <div class="glass-card p-4 rounded-xl border border-slate-800">
+            <div class="text-xs text-slate-400">Card & Digital Total</div>
+            <div id="shiftDigitalSalesVal" class="text-xl font-bold font-mono text-cyan-400 mt-1">$684.20</div>
+            <div class="text-[10px] text-cyan-500/80 mt-1">Card / QR Payments</div>
+          </div>
+
+          <div class="glass-card p-4 rounded-xl border border-slate-800">
+            <div class="text-xs text-slate-400">Expected Cash in Drawer</div>
+            <div id="shiftExpectedCashVal" class="text-xl font-bold font-mono text-amber-400 mt-1">$587.50</div>
+            <div class="text-[10px] text-slate-500 mt-1">Float + Cash Sales + Adjustments</div>
+          </div>
+        </div>
+
+        <!-- Two Column Layout: Cash Movements Audit Log & X/Z Reports -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          <!-- Left: Cash Audit Trail -->
+          <div class="lg:col-span-7 glass-panel p-5 rounded-2xl border border-slate-800 space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <i class="fa-solid fa-list-check text-cyan-400"></i>
+                Cash Movement & Expense Log
+              </h3>
+              <span class="text-[11px] text-slate-500">Current Shift</span>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs text-slate-300">
+                <thead class="bg-slate-900/80 text-slate-400 border-b border-slate-800 font-semibold">
+                  <tr>
+                    <th class="p-2.5">Time</th>
+                    <th class="p-2.5">Type</th>
+                    <th class="p-2.5">Reason / Note</th>
+                    <th class="p-2.5 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody id="cashLogTable" class="divide-y divide-slate-800/60">
+                  <!-- Dynamic cash logs -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Right: Mid-Shift & End Day Report Actions -->
+          <div class="lg:col-span-5 glass-panel p-5 rounded-2xl border border-slate-800 space-y-4">
+            <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-file-invoice-dollar text-emerald-400"></i>
+              Shift Reporting & Auditing
+            </h3>
+            
+            <p class="text-xs text-slate-400 leading-relaxed">
+              Generate register snapshot reports anytime during the active shift or execute Z-Report closing at end-of-day.
+            </p>
+
+            <div class="space-y-3 pt-2">
+              <button onclick="generateReport('x')" class="w-full p-3 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 rounded-xl text-left flex items-center justify-between group transition">
+                <div>
+                  <div class="text-xs font-bold text-slate-200 group-hover:text-cyan-400 transition">Mid-Shift X-Report</div>
+                  <div class="text-[10px] text-slate-400">Preview live balances without closing register</div>
+                </div>
+                <i class="fa-solid fa-arrow-right text-slate-500 group-hover:text-cyan-400 transition"></i>
+              </button>
+
+              <button onclick="generateReport('z')" class="w-full p-3 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 rounded-xl text-left flex items-center justify-between group transition">
+                <div>
+                  <div class="text-xs font-bold text-slate-200 group-hover:text-emerald-400 transition">End-Of-Day Z-Report</div>
+                  <div class="text-[10px] text-slate-400">Perform drawer count reconciliation and lock shift</div>
+                </div>
+                <i class="fa-solid fa-lock text-slate-500 group-hover:text-emerald-400 transition"></i>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================= MODALS & POPUPS ================= -->
+
+  <!-- 1. MULTI-PAYMENT MODAL -->
+  <div id="paymentModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-lg rounded-2xl border border-slate-800 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div class="p-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center">
+        <h3 class="font-bold text-slate-100 text-base flex items-center gap-2">
+          <i class="fa-solid fa-cash-register text-emerald-400"></i>
+          Complete Payment
+        </h3>
+        <button onclick="closePaymentModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <div class="p-5 space-y-4">
+        <!-- Amount Due Display -->
+        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
+          <span class="text-xs text-slate-400">Total Amount Due</span>
+          <span id="payModalAmount" class="text-2xl font-black font-mono text-cyan-400">$0.00</span>
+        </div>
+
+        <!-- Payment Method Tabs -->
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-2">Select Payment Method</label>
+          <div class="grid grid-cols-4 gap-2">
+            <button type="button" onclick="setPayMethod('cash')" id="payTab-cash" class="pay-method-btn p-3 rounded-xl border border-cyan-500 bg-cyan-500/10 text-cyan-400 text-xs font-semibold flex flex-col items-center gap-1 transition">
+              <i class="fa-solid fa-money-bill-wave text-base"></i> Cash
+            </button>
+            <button type="button" onclick="setPayMethod('card')" id="payTab-card" class="pay-method-btn p-3 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 text-xs font-semibold flex flex-col items-center gap-1 transition hover:border-slate-700">
+              <i class="fa-solid fa-credit-card text-base"></i> Card
+            </button>
+            <button type="button" onclick="setPayMethod('wallet')" id="payTab-wallet" class="pay-method-btn p-3 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 text-xs font-semibold flex flex-col items-center gap-1 transition hover:border-slate-700">
+              <i class="fa-solid fa-qrcode text-base"></i> Digital QR
+            </button>
+            <button type="button" onclick="setPayMethod('credit')" id="payTab-credit" class="pay-method-btn p-3 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 text-xs font-semibold flex flex-col items-center gap-1 transition hover:border-slate-700">
+              <i class="fa-solid fa-user-clock text-base"></i> Store Credit
+            </button>
+          </div>
+        </div>
+
+        <!-- CASH TENDERED INPUT (Shown for Cash) -->
+        <div id="cashPaySection" class="space-y-3">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Tendered Amount</label>
+            <input type="number" id="tenderedInput" oninput="calculateChange()" placeholder="0.00" step="0.01" 
+              class="w-full bg-slate-950 text-slate-100 text-lg font-mono font-bold px-3 py-2.5 rounded-xl border border-slate-800 focus:border-cyan-500 outline-none">
+          </div>
+          <!-- Quick Tender Buttons -->
+          <div class="flex gap-2">
+            <button onclick="setTenderExact()" class="flex-1 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-mono text-slate-300">Exact</button>
+            <button onclick="addTender(10)" class="flex-1 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-mono text-slate-300">+$10</button>
+            <button onclick="addTender(20)" class="flex-1 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-mono text-slate-300">+$20</button>
+            <button onclick="addTender(50)" class="flex-1 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-mono text-slate-300">+$50</button>
+          </div>
+          <!-- Calculated Change -->
+          <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800/80 flex justify-between items-center">
+            <span class="text-xs text-slate-400">Change Due:</span>
+            <span id="changeDueVal" class="text-lg font-bold font-mono text-emerald-400">$0.00</span>
+          </div>
+        </div>
+
+        <!-- DIGITAL / CARD DUMMY VIEW -->
+        <div id="digitalPaySection" class="hidden text-center py-4 space-y-2">
+          <div class="w-32 h-32 mx-auto bg-white p-2 rounded-xl border border-slate-700 flex items-center justify-center">
+            <i class="fa-solid fa-qrcode text-8xl text-slate-950"></i>
+          </div>
+          <p class="text-xs text-slate-400">Scan QR Code or Insert Card into POS Terminal Machine</p>
+        </div>
+
+        <button onclick="finalizeSale()" class="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm rounded-xl shadow-lg shadow-emerald-500/20 transition uppercase tracking-wide">
+          Complete Transaction & Print
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. CUSTOMER LINKING MODAL -->
+  <div id="customerModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-md rounded-2xl border border-slate-800 p-5 space-y-4">
+      <div class="flex justify-between items-center pb-2 border-b border-slate-800">
+        <h3 class="font-bold text-slate-100 text-sm">Link Customer Account</h3>
+        <button onclick="closeCustomerModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="relative">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+        <input type="text" id="custSearchInput" onkeyup="searchCustomers()" placeholder="Search by Mobile No or Name..." 
+          class="w-full bg-slate-950 text-xs text-slate-100 pl-9 pr-3 py-2.5 rounded-xl border border-slate-800 outline-none">
+      </div>
+
+      <div id="customerList" class="space-y-2 max-h-56 overflow-y-auto">
+        <!-- Customer options JS populated -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. CASH IN / CASH OUT MODAL -->
+  <div id="cashModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-md rounded-2xl border border-slate-800 p-5 space-y-4">
+      <div class="flex justify-between items-center pb-2 border-b border-slate-800">
+        <h3 id="cashModalTitle" class="font-bold text-slate-100 text-sm">Cash Adjustment</h3>
+        <button onclick="closeCashModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block text-slate-400 mb-1">Reason / Category</label>
+          <input type="text" id="cashReasonInput" placeholder="e.g., Petty cash for office supplies, Mid-day float..." class="w-full bg-slate-950 text-slate-100 p-2.5 rounded-xl border border-slate-800 outline-none">
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Amount ($)</label>
+          <input type="number" id="cashAmountInput" step="0.01" placeholder="0.00" class="w-full bg-slate-950 text-slate-100 p-2.5 rounded-xl border border-slate-800 outline-none font-mono">
+        </div>
+        <button onclick="saveCashAdjustment()" class="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl transition">
+          Log Entry
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. CASH DRAWER POP SIMULATION MODAL -->
+  <div id="drawerPopModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-sm rounded-2xl border border-amber-500/30 p-6 text-center space-y-4 shadow-2xl">
+      <div class="w-16 h-16 bg-amber-500/10 text-amber-400 rounded-full flex items-center justify-center mx-auto text-2xl border border-amber-500/30 animate-bounce">
+        <i class="fa-solid fa-vault"></i>
+      </div>
+      <div>
+        <h3 class="text-base font-bold text-slate-100">Cash Drawer Triggered!</h3>
+        <p class="text-xs text-slate-400 mt-1">Signal sent to printer RJ11 port. Physical drawer popped open.</p>
+      </div>
+      <button onclick="closeDrawerModal()" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700">
+        Close Notification
+      </button>
+    </div>
+  </div>
+
+  <!-- 5. PRINTABLE RECEIPT TEMPLATE (HIDDEN FOR DIRECT PRINTING / VIEW) -->
+  <div id="printableReceipt" class="hidden">
+    <div style="text-align: center; margin-bottom: 10px;">
+      <h2 style="margin:0; font-size: 16px;">NEXUS SUPERSTORE</h2>
+      <p style="margin:2px 0; font-size: 10px;">100 Retail Boulevard, Cityville</p>
+      <p style="margin:2px 0; font-size: 10px;">Tel: (555) 019-2834</p>
+      <p style="margin:5px 0; font-size: 10px;">================================</p>
+    </div>
+    <div style="font-size: 10px; margin-bottom: 8px;">
+      <div>Receipt: <span id="recNo">REC-0000</span></div>
+      <div>Date: <span id="recDate">---</span></div>
+      <div>Cashier: John Doe</div>
+      <div>Customer: <span id="recCustomer">Walk-in</span></div>
+    </div>
+    <p style="margin:5px 0; font-size: 10px;">--------------------------------</p>
+    <div id="recItemsList" style="font-size: 10px; min-height: 40px;">
+      <!-- Dynamic Receipt Items -->
+    </div>
+    <p style="margin:5px 0; font-size: 10px;">--------------------------------</p>
+    <div style="font-size: 10px; text-align: right;">
+      <div>Subtotal: <span id="recSubtotal">$0.00</span></div>
+      <div>Tax (8%): <span id="recTax">$0.00</span></div>
+      <div>Discount: <span id="recDiscount">$0.00</span></div>
+      <div style="font-weight: bold; font-size: 12px; margin-top: 4px;">TOTAL: <span id="recTotal">$0.00</span></div>
+      <div>Paid (<span id="recMethod">Cash</span>): <span id="recPaid">$0.00</span></div>
+      <div>Change: <span id="recChange">$0.00</span></div>
+    </div>
+    <div style="text-align: center; margin-top: 15px; font-size: 9px;">
+      <p style="margin:0;">Thank you for shopping with us!</p>
+      <p style="margin:2px 0;">Returns accepted within 14 days with receipt.</p>
+    </div>
+  </div>
+
+  <!-- NOTIFICATION TOAST WRAPPER -->
+  <div id="toastContainer" class="fixed top-20 right-4 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+  <!-- ================= JAVASCRIPT POS ENGINE ================= -->
+  <script>
+    /* ------------------------------------------------------------------- */
+    /* SAMPLE INVENTORY DATABASE */
+    /* ------------------------------------------------------------------- */
+    const sampleProducts = [
+      { id: 101, name: "Fresh Organic Bananas", category: "Fruits & Veggies", price: 1.49, sku: "BAN-001", stock: 120, icon: "fa-leaf" },
+      { id: 102, name: "Crisp Red Apples (1kg)", category: "Fruits & Veggies", price: 3.99, sku: "APP-002", stock: 85, icon: "fa-apple-whole" },
+      { id: 103, name: "Artisanal Sourdough Bread", category: "Bakery", price: 4.50, sku: "BAK-001", stock: 24, icon: "fa-bread-slice" },
+      { id: 104, name: "Chocolate Croissant", category: "Bakery", price: 2.75, sku: "BAK-002", stock: 18, icon: "fa-cookie" },
+      { id: 105, name: "Sparkling Mineral Water 1L", category: "Beverages", price: 1.99, sku: "BEV-001", stock: 200, icon: "fa-bottle-water" },
+      { id: 106, name: "Cold Brew Iced Coffee", category: "Beverages", price: 3.85, sku: "BEV-002", stock: 45, icon: "fa-mug-hot" },
+      { id: 107, name: "Sea Salt Potato Chips", category: "Snacks", price: 2.20, sku: "SNK-001", stock: 90, icon: "fa-box-open" },
+      { id: 108, name: "Roasted Almonds 250g", category: "Snacks", price: 5.99, sku: "SNK-002", stock: 35, icon: "fa-bowl-food" },
+      { id: 109, name: "Whole Organic Milk 1Gal", category: "Dairy & Eggs", price: 4.29, sku: "DY-001", stock: 40, icon: "fa-cow" },
+      { id: 110, name: "Farm Fresh Eggs (Dozen)", category: "Dairy & Eggs", price: 3.49, sku: "DY-002", stock: 60, icon: "fa-egg" }
+    ];
+
+    /* SAMPLE CUSTOMERS DATABASE */
+    const sampleCustomers = [
+      { id: 1, name: "Sarah Jenkins", phone: "555-0182", points: 240, discount: 5 },
+      { id: 2, name: "Marcus Vance", phone: "555-0199", points: 580, discount: 10 },
+      { id: 3, name: "Elena Rostova", phone: "555-0143", points: 90, discount: 0 }
+    ];
+
+    /* SAMPLE INVOICES FOR RETURNS */
+    const sampleInvoices = {
+      "REC-1001": {
+        customer: "Sarah Jenkins",
+        date: "Today, 10:24 AM",
+        total: 13.97,
+        items: [
+          { id: 101, name: "Fresh Organic Bananas", price: 1.49, qty: 2 },
+          { id: 103, name: "Artisanal Sourdough Bread", price: 4.50, qty: 1 },
+          { id: 106, name: "Cold Brew Iced Coffee", price: 3.85, qty: 1 }
+        ]
+      },
+      "REC-1002": {
+        customer: "Walk-in Customer",
+        date: "Yesterday, 04:15 PM",
+        total: 8.28,
+        items: [
+          { id: 109, name: "Whole Organic Milk 1Gal", price: 4.29, qty: 1 },
+          { id: 102, name: "Crisp Red Apples (1kg)", price: 3.99, qty: 1 }
+        ]
+      }
+    };
+
+    /* APP STATE */
+    let cart = [];
+    let activeCustomer = null;
+    let appliedDiscountPct = 0;
+    let selectedCategory = 'All';
+    let currentPayMethod = 'cash';
+    
+    // Shift Data
+    let shiftData = {
+      float: 200.00,
+      cashSales: 412.50,
+      digitalSales: 684.20,
+      cashLogs: [
+        { time: '08:15 AM', type: 'IN', reason: 'Initial Starting Float', amount: 200.00 },
+        { time: '11:30 AM', type: 'OUT', reason: 'Store Cleaning Supplies', amount: 25.00 }
+      ]
+    };
+
+    let activeCashType = 'in';
+
+    /* ------------------------------------------------------------------- */
+    /* INITIALIZATION & CLOCK */
+    /* ------------------------------------------------------------------- */
+    window.onload = function() {
+      renderProducts();
+      renderCart();
+      renderCashLogs();
+      updateClock();
+      setInterval(updateClock, 1000);
+
+      // Open the tab requested by the sidebar deep-link (e.g. pos-terminal.html#shift)
+      switchTab(POS_TABS.includes(location.hash.replace('#', '')) ? location.hash.replace('#', '') : 'billing');
+
+      // Barcode Enter key listener
+      document.getElementById('barcodeInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+          const val = this.value.trim().toUpperCase();
+          const prod = sampleProducts.find(p => p.sku === val || p.id.toString() === val);
+          if (prod) {
+            addToCart(prod.id);
+            this.value = '';
+            showToast(`Scanned: ${prod.name}`, 'success');
+          } else {
+            showToast(`SKU/Barcode ${val} not found!`, 'error');
+          }
+        }
+      });
+    };
+
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('clockTime').innerText = now.toLocaleTimeString();
+      document.getElementById('clockDate').innerText = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    /* ------------------------------------------------------------------- */
+    /* NAVIGATION (tabs live in the shared sidebar)                         */
+    /* ------------------------------------------------------------------- */
+    const POS_TABS = ['billing', 'returns', 'shift'];
+
+    function switchTab(tabId) {
+      if (!POS_TABS.includes(tabId)) tabId = 'billing';
+
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+
+      if (location.hash !== `#${tabId}`) history.replaceState(null, '', `#${tabId}`);
+      if (window.NexusNav) NexusNav.sync('pos', tabId);
+    }
+
+    /* sidebar hook: switch tabs WITHOUT reloading (keeps the cart alive) */
+    window.NEXUS_ROUTE_TAB = switchTab;
+
+    window.addEventListener('hashchange', () => {
+      const t = location.hash.replace('#', '');
+      if (POS_TABS.includes(t)) {
+        switchTab(t);
+      } else {
+        // Unknown tab id — restore the URL to whatever is actually on screen
+        const active = POS_TABS.find(m => !document.getElementById(`tab-${m}`).classList.contains('hidden')) || 'billing';
+        history.replaceState(null, '', `#${active}`);
+      }
+    });
+
+    /* ------------------------------------------------------------------- */
+    /* PRODUCT CATALOG RENDER & FILTER */
+    /* ------------------------------------------------------------------- */
+    function renderProducts() {
+      const grid = document.getElementById('productGrid');
+      grid.innerHTML = '';
+
+      const search = document.getElementById('searchInput').value.toLowerCase();
+
+      const filtered = sampleProducts.filter(p => {
+        const matchesCat = selectedCategory === 'All' || p.category === selectedCategory;
+        const matchesSearch = p.name.toLowerCase().includes(search) || p.sku.toLowerCase().includes(search);
+        return matchesCat && matchesSearch;
+      });
+
+      filtered.forEach(p => {
+        const card = document.createElement('div');
+        card.className = "glass-card p-3 rounded-xl flex flex-col justify-between cursor-pointer transition transform hover:-translate-y-1 active:scale-95 group";
+        card.onclick = () => addToCart(p.id);
+
+        card.innerHTML = `
+          <div>
+            <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+              <span class="font-mono text-[10px] text-cyan-400/80">${p.sku}</span>
+              <span class="text-[10px] bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">Qty: ${p.stock}</span>
+            </div>
+            <div class="w-10 h-10 rounded-lg bg-slate-900 text-cyan-400 border border-slate-800 flex items-center justify-center text-lg mb-2 group-hover:border-cyan-500/40 group-hover:text-cyan-300 transition">
+              <i class="fa-solid ${p.icon}"></i>
+            </div>
+            <h4 class="text-xs font-semibold text-slate-200 line-clamp-2 leading-snug">${p.name}</h4>
+          </div>
+          <div class="mt-3 flex items-center justify-between pt-2 border-t border-slate-800/80">
+            <span class="text-sm font-bold font-mono text-emerald-400">$${p.price.toFixed(2)}</span>
+            <span class="text-[10px] text-cyan-400 font-semibold opacity-0 group-hover:opacity-100 transition">+ ADD</span>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function filterCategory(cat, btn) {
+      selectedCategory = cat;
+      document.querySelectorAll('.cat-pill').forEach(b => {
+        b.classList.remove('bg-cyan-500/20', 'text-cyan-400', 'border-cyan-500/40');
+        b.classList.add('text-slate-400', 'bg-slate-900', 'border-slate-800');
+      });
+      // Only restyle when the clicked pill is handed in — relying on the
+      // implicit global `event` throws ReferenceError in Firefox/Safari.
+      if (btn) {
+        btn.classList.remove('text-slate-400', 'bg-slate-900', 'border-slate-800');
+        btn.classList.add('bg-cyan-500/20', 'text-cyan-400', 'border-cyan-500/40');
+      }
+      renderProducts();
+    }
+
+    function filterProducts() {
+      renderProducts();
+    }
+
+    /* ------------------------------------------------------------------- */
+    /* CART LOGIC */
+    /* ------------------------------------------------------------------- */
+    function addToCart(productId) {
+      const prod = sampleProducts.find(p => p.id === productId);
+      if (!prod) return;
+
+      const existing = cart.find(item => item.id === productId);
+      if (existing) {
+        existing.qty += 1;
+      } else {
+        cart.push({ ...prod, qty: 1 });
+      }
+      renderCart();
+    }
+
+    function updateCartQty(productId, delta) {
+      const item = cart.find(i => i.id === productId);
+      if (!item) return;
+
+      item.qty += delta;
+      if (item.qty <= 0) {
+        cart = cart.filter(i => i.id !== productId);
+      }
+      renderCart();
+    }
+
+    function removeFromCart(productId) {
+      cart = cart.filter(i => i.id !== productId);
+      renderCart();
+    }
+
+    function clearCart() {
+      cart = [];
+      appliedDiscountPct = 0;
+      // A cleared cart starts over as a walk-in: leaving the previous customer
+      // linked printed the wrong name on the next receipt while their tier
+      // discount had already been wiped.
+      activeCustomer = null;
+      document.getElementById('discountRow').classList.add('hidden');
+      document.getElementById('cartCustomerName').innerText = 'Walk-in Customer';
+      document.getElementById('customerPointsBadge').classList.add('hidden');
+      renderCart();
+      showToast('Cart cleared', 'info');
+    }
+
+    function renderCart() {
+      const container = document.getElementById('cartContainer');
+      container.innerHTML = '';
+
+      if (cart.length === 0) {
+        container.innerHTML = `
+          <div class="h-full flex flex-col items-center justify-center text-slate-500 py-12">
+            <i class="fa-solid fa-basket-shopping text-4xl mb-2 opacity-40"></i>
+            <p class="text-xs font-medium">Terminal Cart Empty</p>
+            <p class="text-[10px] text-slate-600">Scan barcode or select catalog items</p>
+          </div>
+        `;
+      } else {
+        cart.forEach(item => {
+          const div = document.createElement('div');
+          div.className = "p-2.5 bg-slate-950/80 rounded-xl border border-slate-800 flex items-center justify-between space-x-2";
+          
+          const lineTotal = item.price * item.qty;
+
+          div.innerHTML = `
+            <div class="flex items-center space-x-2.5 flex-1 min-w-0">
+              <div class="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-cyan-400 text-xs shrink-0">
+                <i class="fa-solid ${item.icon}"></i>
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="text-xs font-semibold text-slate-200 truncate">${item.name}</div>
+                <div class="text-[10px] text-slate-500 font-mono">$${item.price.toFixed(2)} / ea</div>
+              </div>
+            </div>
+
+            <div class="flex items-center space-x-2">
+              <div class="flex items-center space-x-1 bg-slate-900 border border-slate-800 rounded-lg p-0.5">
+                <button onclick="updateCartQty(${item.id}, -1)" class="w-5 h-5 text-slate-400 hover:text-white flex items-center justify-center text-xs">-</button>
+                <span class="w-6 text-center text-xs font-mono font-bold text-slate-100">${item.qty}</span>
+                <button onclick="updateCartQty(${item.id}, 1)" class="w-5 h-5 text-slate-400 hover:text-white flex items-center justify-center text-xs">+</button>
+              </div>
+
+              <div class="w-16 text-right font-mono text-xs font-bold text-slate-200">$${lineTotal.toFixed(2)}</div>
+
+              <button onclick="removeFromCart(${item.id})" class="text-slate-600 hover:text-rose-400 p-1 text-xs">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+          `;
+          container.appendChild(div);
+        });
+      }
+
+      calculateCartTotals();
+    }
+
+    function calculateCartTotals() {
+      const subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+      const discountAmt = subtotal * (appliedDiscountPct / 100);
+      const taxable = subtotal - discountAmt;
+      const tax = taxable * 0.08; // 8% sales tax
+      const grandTotal = taxable + tax;
+
+      document.getElementById('summarySubtotal').innerText = `$${subtotal.toFixed(2)}`;
+      document.getElementById('summaryTax').innerText = `$${tax.toFixed(2)}`;
+      document.getElementById('summaryGrandTotal').innerText = `$${grandTotal.toFixed(2)}`;
+      document.getElementById('payBtnAmount').innerText = `($${grandTotal.toFixed(2)})`;
+
+      if (appliedDiscountPct > 0) {
+        document.getElementById('discountRow').classList.remove('hidden');
+        document.getElementById('discountTag').innerText = `${appliedDiscountPct}% OFF`;
+        document.getElementById('summaryDiscount').innerText = `-$${discountAmt.toFixed(2)}`;
+      }
+
+      return { subtotal, discountAmt, tax, grandTotal };
+    }
+
+    /* ------------------------------------------------------------------- */
+    /* COUPONS & CUSTOMER LINKING */
+    /* ------------------------------------------------------------------- */
+    function applyCoupon() {
+      const code = document.getElementById('couponInput').value.trim().toUpperCase();
+      if (code === 'WELCOME10') {
+        appliedDiscountPct = 10;
+        showToast('Promo WELCOME10 applied (10% OFF)', 'success');
+      } else if (code === 'SAVE50') {
+        appliedDiscountPct = 50;
+        showToast('Promo SAVE50 applied (50% OFF)', 'success');
+      } else if (code === '') {
+        appliedDiscountPct = 0;
+      } else {
+        showToast('Invalid Coupon Code', 'error');
+        return;
+      }
+      renderCart();
+    }
+
+    function openCustomerModal() {
+      document.getElementById('customerModal').classList.remove('hidden');
+      searchCustomers();
+    }
+
+    function closeCustomerModal() {
+      document.getElementById('customerModal').classList.add('hidden');
+    }
+
+    function searchCustomers() {
+      const q = document.getElementById('custSearchInput').value.toLowerCase();
+      const list = document.getElementById('customerList');
+      list.innerHTML = '';
+
+      const matches = sampleCustomers.filter(c => c.name.toLowerCase().includes(q) || c.phone.includes(q));
+
+      matches.forEach(c => {
+        const item = document.createElement('div');
+        item.className = "p-3 bg-slate-900 border border-slate-800 hover:border-cyan-500/50 rounded-xl cursor-pointer flex justify-between items-center transition";
+        item.onclick = () => selectCustomer(c);
+        item.innerHTML = `
+          <div>
+            <div class="text-xs font-bold text-slate-200">${c.name}</div>
+            <div class="text-[10px] text-slate-500">${c.phone}</div>
+          </div>
+          <div class="text-right">
+            <span class="text-xs font-mono text-amber-400 font-bold">${c.points} Pts</span>
+            <div class="text-[10px] text-emerald-400">${c.discount}% Tier Disc</div>
+          </div>
+        `;
+        list.appendChild(item);
+      });
+    }
+
+    function selectCustomer(cust) {
+      activeCustomer = cust;
+      document.getElementById('cartCustomerName').innerText = cust.name;
+      const badge = document.getElementById('customerPointsBadge');
+      badge.innerText = `${cust.points} Pts`;
+      badge.classList.remove('hidden');
+
+      if (cust.discount > 0) {
+        appliedDiscountPct = cust.discount;
+        showToast(`Customer Tier Discount ${cust.discount}% Applied`, 'info');
+      }
+
+      closeCustomerModal();
+      renderCart();
+    }
+
+    /* ------------------------------------------------------------------- */
+    /* CHECKOUT & PAYMENTS */
+    /* ------------------------------------------------------------------- */
+    function openPaymentModal() {
+      if (cart.length === 0) {
+        showToast('Cart is empty!', 'error');
+        return;
+      }
+      const totals = calculateCartTotals();
+      document.getElementById('payModalAmount').innerText = `$${totals.grandTotal.toFixed(2)}`;
+      // Pre-fill the exact amount owed, rounded up to the cent (see setTenderExact)
+      document.getElementById('tenderedInput').value = (Math.ceil(totals.grandTotal * 100) / 100).toFixed(2);
+      calculateChange();
+      document.getElementById('paymentModal').classList.remove('hidden');
+    }
+
+    function closePaymentModal() {
+      document.getElementById('paymentModal').classList.add('hidden');
+    }
+
+    function setPayMethod(method) {
+      currentPayMethod = method;
+      document.querySelectorAll('.pay-method-btn').forEach(btn => {
+        btn.classList.remove('border-cyan-500', 'bg-cyan-500/10', 'text-cyan-400');
+        btn.classList.add('border-slate-800', 'bg-slate-900', 'text-slate-400');
+      });
+
+      const activeTab = document.getElementById(`payTab-${method}`);
+      activeTab.classList.remove('border-slate-800', 'bg-slate-900', 'text-slate-400');
+      activeTab.classList.add('border-cyan-500', 'bg-cyan-500/10', 'text-cyan-400');
+
+      if (method === 'cash') {
+        document.getElementById('cashPaySection').classList.remove('hidden');
+        document.getElementById('digitalPaySection').classList.add('hidden');
+      } else {
+        document.getElementById('cashPaySection').classList.add('hidden');
+        document.getElementById('digitalPaySection').classList.remove('hidden');
+      }
+    }
+
+    function calculateChange() {
+      const totals = calculateCartTotals();
+      const tendered = parseFloat(document.getElementById('tenderedInput').value) || 0;
+      const change = Math.max(0, tendered - totals.grandTotal);
+      document.getElementById('changeDueVal').innerText = `$${change.toFixed(2)}`;
+    }
+
+    function setTenderExact() {
+      const totals = calculateCartTotals();
+      // Round UP to the cent: the total carries sub-cent tax precision
+      // (4.09374), and toFixed(2) would tender 4.09 and underpay.
+      document.getElementById('tenderedInput').value = (Math.ceil(totals.grandTotal * 100) / 100).toFixed(2);
+      calculateChange();
+    }
+
+    function addTender(amt) {
+      const curr = parseFloat(document.getElementById('tenderedInput').value) || 0;
+      document.getElementById('tenderedInput').value = (curr + amt).toFixed(2);
+      calculateChange();
+    }
+
+    function finalizeSale() {
+      const totals = calculateCartTotals();
+      const recId = 'REC-' + Math.floor(1000 + Math.random() * 9000);
+
+      // Validate the tender BEFORE booking the sale. Without this a cashier
+      // could close a cash sale short-paid: the drawer booked the full total,
+      // but the receipt printed a negative "Change" amount.
+      // Compare in whole cents — tax leaves the total with sub-cent precision
+      // (e.g. 4.09374), and a float "<" check made the "Exact" button fail.
+      let tendered = parseFloat(document.getElementById('tenderedInput').value);
+      if (!Number.isFinite(tendered)) tendered = totals.grandTotal;
+      const dueCents = Math.round(totals.grandTotal * 100);
+      if (currentPayMethod === 'cash' && Math.round(tendered * 100) < dueCents) {
+        showToast(`Insufficient tender: $${tendered.toFixed(2)} received, $${totals.grandTotal.toFixed(2)} due`, 'error');
+        return;
+      }
+
+      // Update Shift totals
+      if (currentPayMethod === 'cash') {
+        shiftData.cashSales += totals.grandTotal;
+      } else {
+        shiftData.digitalSales += totals.grandTotal;
+      }
+      updateShiftDashboard();
+
+      // Populate Receipt Print Modal
+      document.getElementById('recNo').innerText = recId;
+      document.getElementById('recDate').innerText = new Date().toLocaleString();
+      document.getElementById('recCustomer').innerText = activeCustomer ? activeCustomer.name : 'Walk-in';
+      document.getElementById('recSubtotal').innerText = `$${totals.subtotal.toFixed(2)}`;
+      document.getElementById('recTax').innerText = `$${totals.tax.toFixed(2)}`;
+      document.getElementById('recDiscount').innerText = `-$${totals.discountAmt.toFixed(2)}`;
+      document.getElementById('recTotal').innerText = `$${totals.grandTotal.toFixed(2)}`;
+      
+      document.getElementById('recPaid').innerText = `$${tendered.toFixed(2)}`;
+      document.getElementById('recChange').innerText = `$${(tendered - totals.grandTotal).toFixed(2)}`;
+      document.getElementById('recMethod').innerText = currentPayMethod.toUpperCase();
+
+      const itemsList = document.getElementById('recItemsList');
+      itemsList.innerHTML = cart.map(i => `
+        <div style="display:flex; justify-between; margin-bottom: 2px;">
+          <span>${i.qty}x ${i.name}</span>
+          <span>$${(i.price * i.qty).toFixed(2)}</span>
+        </div>
+      `).join('');
+
+      closePaymentModal();
+      window.print();
+
+      clearCart();
+      showToast(`Sale #${recId} Completed Successfully!`, 'success');
+    }
+
+    function triggerCashDrawer() {
+      document.getElementById('drawerPopModal').classList.remove('hidden');
+    }
+
+    function closeDrawerModal() {
+      document.getElementById('drawerPopModal').classList.add('hidden');
+    }
+
+    /* ------------------------------------------------------------------- */
+    /* RETURNS & REFUNDS MODULE */
+    /* ------------------------------------------------------------------- */
+    function searchReturnInvoice() {
+      const query = document.getElementById('returnInvoiceInput').value.trim().toUpperCase();
+      const inv = sampleInvoices[query];
+
+      if (!inv) {
+        showToast(`Invoice ${query} not found in database!`, 'error');
+        document.getElementById('returnInvoiceResult').classList.add('hidden');
+        return;
+      }
+
+      document.getElementById('returnRecId').innerText = query;
+      document.getElementById('returnRecDate').innerText = inv.date;
+      document.getElementById('returnRecCustomer').innerText = inv.customer;
+      document.getElementById('returnRecTotal').innerText = `$${inv.total.toFixed(2)}`;
+
+      const tbody = document.getElementById('returnTableBody');
+      tbody.innerHTML = '';
+
+      inv.items.forEach((item, idx) => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-900/40";
+        tr.innerHTML = `
+          <td class="p-3">
+            <input type="checkbox" onchange="calcReturnTotal()" class="return-chk rounded border-slate-700 text-cyan-500 focus:ring-0">
+          </td>
+          <td class="p-3 font-medium text-slate-200">${item.name}</td>
+          <td class="p-3 text-center font-mono">${item.qty}</td>
+          <td class="p-3 text-center">
+            <input type="number" value="1" min="1" max="${item.qty}" onchange="calcReturnTotal()" class="return-qty w-12 bg-slate-950 border border-slate-800 text-center rounded p-1 font-mono text-xs">
+          </td>
+          <td class="p-3">
+            <select class="bg-slate-950 border border-slate-800 rounded p-1 text-xs text-slate-300">
+              <option>Customer Return</option>
+              <option>Damaged Item</option>
+              <option>Expired Product</option>
+            </select>
+          </td>
+          <td class="p-3 text-right font-mono font-bold text-emerald-400 item-price" data-unitprice="${item.price}">$${item.price.toFixed(2)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('returnInvoiceResult').classList.remove('hidden');
+      calcReturnTotal();
+    }
+
+    function calcReturnTotal() {
+      let total = 0;
+      const rows = document.querySelectorAll('#returnTableBody tr');
+      rows.forEach(r => {
+        const chk = r.querySelector('.return-chk');
+        const qtyInput = r.querySelector('.return-qty');
+        if (chk && chk.checked && qtyInput) {
+          // The input's max= attribute is advisory only, so clamp here —
+          // otherwise typing 999 refunds 999x the unit price on a 2-unit sale.
+          const maxQty = parseInt(qtyInput.getAttribute('max'), 10) || 1;
+          let qty = parseInt(qtyInput.value, 10);
+          if (!Number.isFinite(qty) || qty < 1) qty = 1;
+          if (qty > maxQty) qty = maxQty;
+          qtyInput.value = qty;   // reflect the clamp back to the cashier
+
+          const uPrice = parseFloat(qtyInput.closest('tr').querySelector('.item-price').dataset.unitprice);
+          total += (qty * uPrice);
+        }
+      });
+      document.getElementById('totalRefundAmount').innerText = `$${total.toFixed(2)}`;
+    }
+
+    function processRefund() {
+      const amt = document.getElementById('totalRefundAmount').innerText;
+      if (amt === '$0.00') {
+        showToast('Please select at least one item to refund!', 'error');
+        return;
+      }
+
+      // Refunded cash physically leaves the drawer, so it has to be booked as a
+      // Cash OUT — otherwise "Expected Cash in Drawer" stayed high and the
+      // Z-Report no longer matched the till.
+      const amount = parseFloat(amt.replace(/[^0-9.]/g, '')) || 0;
+      if (amount > 0) {
+        shiftData.cashLogs.push({
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          type: 'OUT',
+          reason: `Customer refund on ${document.getElementById('returnRecId').innerText}`,
+          amount: amount
+        });
+        renderCashLogs();
+      }
+
+      showToast(`Refund of ${amt} processed successfully! Receipt printed.`, 'success');
+      document.getElementById('returnInvoiceResult').classList.add('hidden');
+    }
+
+    /* ------------------------------------------------------------------- */
+    /* SHIFT & CASH MANAGEMENT MODULE */
+    /* ------------------------------------------------------------------- */
+    function updateShiftDashboard() {
+      document.getElementById('shiftFloatVal').innerText = `$${shiftData.float.toFixed(2)}`;
+      document.getElementById('shiftCashSalesVal').innerText = `$${shiftData.cashSales.toFixed(2)}`;
+      document.getElementById('shiftDigitalSalesVal').innerText = `$${shiftData.digitalSales.toFixed(2)}`;
+
+      const expected = shiftData.float + shiftData.cashSales + shiftData.cashLogs.reduce((acc, l) => {
+        return l.type === 'IN' ? acc + l.amount : acc - l.amount;
+      }, 0) - shiftData.float; // Adjusting float logic
+
+      document.getElementById('shiftExpectedCashVal').innerText = `$${expected.toFixed(2)}`;
+    }
+
+    function openCashModal(type) {
+      activeCashType = type;
+      document.getElementById('cashModalTitle').innerText = type === 'in' ? 'Cash IN Entry' : 'Cash OUT Entry';
+      document.getElementById('cashModal').classList.remove('hidden');
+    }
+
+    function closeCashModal() {
+      document.getElementById('cashModal').classList.add('hidden');
+    }
+
+    function saveCashAdjustment() {
+      const reason = document.getElementById('cashReasonInput').value;
+      const amt = parseFloat(document.getElementById('cashAmountInput').value) || 0;
+
+      if (!reason || amt <= 0) {
+        showToast('Please enter valid reason and amount', 'error');
+        return;
+      }
+
+      shiftData.cashLogs.push({
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: activeCashType.toUpperCase(),
+        reason: reason,
+        amount: amt
+      });
+
+      renderCashLogs();
+      updateShiftDashboard();
+      closeCashModal();
+      showToast(`Cash ${activeCashType.toUpperCase()} recorded`, 'success');
+    }
+
+    function renderCashLogs() {
+      const tbody = document.getElementById('cashLogTable');
+      tbody.innerHTML = '';
+
+      shiftData.cashLogs.forEach(l => {
+        const tr = document.createElement('tr');
+        const color = l.type === 'IN' ? 'text-emerald-400' : 'text-rose-400';
+        tr.innerHTML = `
+          <td class="p-2.5 font-mono text-slate-400">${l.time}</td>
+          <td class="p-2.5 font-bold ${color}">${l.type}</td>
+          <td class="p-2.5 text-slate-200">${l.reason}</td>
+          <td class="p-2.5 text-right font-mono font-bold ${color}">$${l.amount.toFixed(2)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      updateShiftDashboard();
+    }
+
+    function generateReport(type) {
+      const title = type === 'x' ? 'MID-SHIFT X-REPORT' : 'END-OF-DAY Z-REPORT';
+      alert(`[${title}]\n-----------------------\nStarting Float: $${shiftData.float.toFixed(2)}\nTotal Cash Sales: $${shiftData.cashSales.toFixed(2)}\nTotal Card/Digital: $${shiftData.digitalSales.toFixed(2)}\n\nReport sent to receipt printer.`);
+    }
+
+    /* ------------------------------------------------------------------- */
+    /* TOAST NOTIFICATION UTILITY */
+    /* ------------------------------------------------------------------- */
+    function showToast(msg, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      
+      let border = 'border-cyan-500';
+      let icon = 'fa-circle-info text-cyan-400';
+      if (type === 'success') { border = 'border-emerald-500'; icon = 'fa-circle-check text-emerald-400'; }
+      if (type === 'error') { border = 'border-rose-500'; icon = 'fa-triangle-exclamation text-rose-400'; }
+
+      toast.className = `glass-panel px-4 py-3 rounded-xl border-l-4 ${border} text-xs text-slate-200 flex items-center gap-2.5 shadow-2xl transition duration-300 pointer-events-auto`;
+      toast.innerHTML = `<i class="fa-solid ${icon} text-sm"></i> <span>${msg}</span>`;
+
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+  </script>
+</body>
+</html>

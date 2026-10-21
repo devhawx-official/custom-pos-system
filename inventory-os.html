@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexus ERP — Inventory & Stock OS</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- JsBarcode library for standard 128 rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              100: '#e0f2fe',
+              500: '#0284c7',
+              600: '#0369a1',
+              400: '#38bdf8',
+            },
+            dark: {
+              900: '#0a0f1d',
+              800: '#0f172a',
+              700: '#1e293b',
+              600: '#334155',
+              500: '#475569'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #0284c7;
+    }
+
+    /* Glassmorphism Borders & Cards */
+    .glass-card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    
+    .glass-input {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(51, 65, 85, 0.8);
+      color: #f8fafc;
+    }
+    .glass-input:focus {
+      border-color: #38bdf8;
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+    }
+
+    /* Thermal Label Sheet Styling for Print Simulation */
+    @media print {
+      html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+
+      /* Drop the app UI out of the layout entirely. The old
+         `body * { visibility: hidden }` still left every element's height in
+         place, and this target normally lives inside a .glass-card whose
+         backdrop-filter makes THAT element the containing block for
+         position:absolute — so the label sheet printed ~900px down the page
+         with a huge blank band above it. triggerPrint() lifts the sheet to be
+         a direct child of <body> for the print run. */
+      body > *:not(#print-section) { display: none !important; }
+
+      #print-section, #print-section * {
+        visibility: visible;
+        color: #000 !important;
+        background: transparent !important;
+        border-color: #999 !important;
+        box-shadow: none !important;
+      }
+      #print-section {
+        position: static !important;
+        display: grid !important;      /* keep the label grid, not absolute */
+        width: 100% !important;
+        padding: 8px !important;
+        background: white !important;
+      }
+      .label-card {
+        border: 1px dashed #000 !important;
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      /* JsBarcode draws an inline SVG — keep its bars on plain white */
+      #print-section svg { background: #fff !important; }
+    }
+  </style>
+  <!-- LIGHT/DARK THEME
+       The saved choice is applied before first paint so the page never
+       flashes the wrong palette. assets/nexus-theme.css then re-maps the
+       dark utility classes under html[data-theme="light"]. -->
+  <script>
+    try {
+      document.documentElement.setAttribute(
+        'data-theme', localStorage.getItem('nexus_theme') === 'light' ? 'light' : 'dark'
+      );
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  </script>
+  <link rel="stylesheet" href="assets/nexus-theme.css">
+</head>
+<body class="bg-dark-900 text-slate-100 font-sans min-h-screen flex flex-col antialiased selection:bg-brand-500 selection:text-white">
+
+  <!-- SIDEBAR NAV (shared) -->
+  <script src="assets/nexus-sidebar.js" data-module="inventory"></script>
+  <!-- Theme controller: mounts the sidebar toggle -->
+  <script src="assets/nexus-theme.js"></script>
+  <!-- Shared demo seed + localStorage seeding -->
+  <script src="assets/nexus-seed.js"></script>
+
+  <!-- TOP HEADER -->
+  <header class="bg-dark-800/90 border-b border-dark-600 sticky top-0 z-30 backdrop-blur-md px-4 py-3">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      <!-- Page Title (module nav lives in the sidebar) -->
+      <div class="flex items-center gap-3">
+        <h1 class="font-bold text-lg tracking-tight text-white">Inventory &amp; Stock OS</h1>
+        <span class="text-[10px] font-mono px-2 py-0.5 bg-brand-500/10 text-brand-400 border border-brand-500/20 rounded-full font-semibold">SUPER STORE v3.4</span>
+        <p class="hidden lg:block text-xs text-slate-400">Master Catalog &amp; Inward Audit</p>
+      </div>
+
+      <!-- Quick Metrics Ribbon -->
+      <div class="flex items-center gap-2 sm:gap-4 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
+        <div class="bg-dark-900/80 border border-dark-600 px-3 py-1.5 rounded-lg flex items-center gap-3 min-w-[120px]">
+          <i class="fa-solid fa-barcode text-brand-400 text-lg"></i>
+          <div>
+            <p class="text-[10px] text-slate-400 uppercase tracking-wider">Total SKUs</p>
+            <p id="stat-total-skus" class="font-mono text-sm font-bold text-white">0</p>
+          </div>
+        </div>
+
+        <div class="bg-dark-900/80 border border-dark-600 px-3 py-1.5 rounded-lg flex items-center gap-3 min-w-[130px]">
+          <i class="fa-solid fa-triangle-exclamation text-amber-400 text-lg"></i>
+          <div>
+            <p class="text-[10px] text-slate-400 uppercase tracking-wider">Low Stock</p>
+            <p id="stat-low-stock" class="font-mono text-sm font-bold text-amber-400">0</p>
+          </div>
+        </div>
+
+        <div class="bg-dark-900/80 border border-dark-600 px-3 py-1.5 rounded-lg flex items-center gap-3 min-w-[140px]">
+          <i class="fa-solid fa-sack-dollar text-emerald-400 text-lg"></i>
+          <div>
+            <p class="text-[10px] text-slate-400 uppercase tracking-wider">Valuation</p>
+            <p id="stat-valuation" class="font-mono text-sm font-bold text-emerald-400">$0.00</p>
+          </div>
+        </div>
+
+        <div class="bg-dark-900/80 border border-dark-600 px-3 py-1.5 rounded-lg flex items-center gap-3 min-w-[120px]">
+          <i class="fa-solid fa-file-invoice text-purple-400 text-lg"></i>
+          <div>
+            <p class="text-[10px] text-slate-400 uppercase tracking-wider">Pending POs</p>
+            <p id="stat-pending-pos" class="font-mono text-sm font-bold text-purple-300">0</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Clock & Quick Action -->
+      <div class="hidden lg:flex items-center gap-3 border-l border-dark-600 pl-4">
+        <div class="text-right font-mono">
+          <div id="live-clock" class="text-xs font-semibold text-slate-200">12:00:00 PM</div>
+          <div id="live-date" class="text-[10px] text-slate-400">2026-10-20</div>
+        </div>
+        <button onclick="resetToDefaults()" class="p-2 text-slate-400 hover:text-rose-400 transition-colors" title="Reset Data to Defaults">
+          <i class="fa-solid fa-rotate-right text-sm"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MODULE TABS LIVE IN THE SHARED SIDEBAR -->
+
+  <!-- MAIN CONTENT CONTAINER -->
+  <main class="max-w-7xl mx-auto px-4 py-6 flex-grow w-full">
+
+    <!-- MODULE 1: PRODUCT CATALOG & MASTER ITEMS -->
+    <section id="module-catalog" class="space-y-6">
+      <!-- Toolbar & Filters -->
+      <div class="glass-card p-4 rounded-xl flex flex-col lg:flex-row items-center justify-between gap-4">
+        <!-- Search -->
+        <div class="relative w-full lg:w-96">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+          <input type="text" id="catalog-search" oninput="renderCatalogTable()" placeholder="Search SKU, Product Name, Barcode..." class="w-full glass-input pl-9 pr-4 py-2 rounded-lg text-sm">
+        </div>
+
+        <!-- Filter Selects -->
+        <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          <select id="filter-category" onchange="renderCatalogTable()" class="glass-input px-3 py-2 rounded-lg text-sm bg-dark-900 text-slate-200">
+            <option value="">All Categories</option>
+            <option value="Grocery">Grocery</option>
+            <option value="Beverage">Beverage</option>
+            <option value="Dairy">Dairy</option>
+            <option value="Personal Care">Personal Care</option>
+            <option value="Snacks">Snacks</option>
+          </select>
+
+          <select id="filter-stock-status" onchange="renderCatalogTable()" class="glass-input px-3 py-2 rounded-lg text-sm bg-dark-900 text-slate-200">
+            <option value="">All Stock Levels</option>
+            <option value="instock">In Stock</option>
+            <option value="low">Low Stock Alert</option>
+            <option value="out">Out of Stock</option>
+          </select>
+
+          <button onclick="openProductModal()" class="ml-auto bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-lg shadow-brand-500/20">
+            <i class="fa-solid fa-plus"></i> Add New SKU
+          </button>
+        </div>
+      </div>
+
+      <!-- Master Products Table -->
+      <div class="glass-card rounded-xl overflow-hidden border border-dark-600">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm text-slate-300">
+            <thead class="bg-dark-900/90 text-xs uppercase tracking-wider text-slate-400 border-b border-dark-600">
+              <tr>
+                <th class="py-3.5 px-4">Item & SKU</th>
+                <th class="py-3.5 px-4">Category & Variant</th>
+                <th class="py-3.5 px-4">Pricing (Cost / Retail)</th>
+                <th class="py-3.5 px-4">Batch / Expiry</th>
+                <th class="py-3.5 px-4 text-center">In Stock</th>
+                <th class="py-3.5 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="catalog-table-body" class="divide-y divide-dark-600/60 font-sans">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- MODULE 2: STOCK LEVELS & MOVEMENT AUDIT -->
+    <section id="module-movement" class="space-y-6 hidden">
+      <!-- Top Action Banner -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="glass-card p-5 rounded-xl border-l-4 border-emerald-500 flex justify-between items-center">
+          <div>
+            <p class="text-xs text-slate-400 uppercase font-mono">Stock Health Index</p>
+            <h3 class="text-2xl font-bold text-white mt-1" id="health-index-val">94.2%</h3>
+            <p class="text-[11px] text-emerald-400 mt-1"><i class="fa-solid fa-arrow-up"></i> Normal operational flow</p>
+          </div>
+          <div class="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400 text-xl">
+            <i class="fa-solid fa-heart-pulse"></i>
+          </div>
+        </div>
+
+        <div class="glass-card p-5 rounded-xl border-l-4 border-amber-500 flex justify-between items-center">
+          <div>
+            <p class="text-xs text-slate-400 uppercase font-mono">Reorder Required</p>
+            <h3 class="text-2xl font-bold text-amber-400 mt-1" id="reorder-count-val">0 Items</h3>
+            <p class="text-[11px] text-amber-400/80 mt-1">Below minimum threshold</p>
+          </div>
+          <div class="h-12 w-12 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-400 text-xl">
+            <i class="fa-solid fa-boxes-packing"></i>
+          </div>
+        </div>
+
+        <div class="glass-card p-5 rounded-xl border-l-4 border-rose-500 flex justify-between items-center">
+          <div>
+            <p class="text-xs text-slate-400 uppercase font-mono">Adjustment Audit Log</p>
+            <button onclick="openAdjustmentModal()" class="mt-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-2 transition-all">
+              <i class="fa-solid fa-minus-circle"></i> Log Damaged / Expired
+            </button>
+          </div>
+          <div class="h-12 w-12 rounded-full bg-rose-500/10 flex items-center justify-center text-rose-400 text-xl">
+            <i class="fa-solid fa-clipboard-check"></i>
+          </div>
+        </div>
+      </div>
+
+      <!-- Real-time Stock Matrix -->
+      <div class="glass-card rounded-xl p-5 border border-dark-600">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+          <div>
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-layer-group text-brand-400"></i> Stock Thresholds & Reorder Matrix
+            </h2>
+            <p class="text-xs text-slate-400">Configure reorder triggers and trigger fast replenishment</p>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm text-slate-300">
+            <thead class="bg-dark-900/90 text-xs uppercase tracking-wider text-slate-400 border-b border-dark-600">
+              <tr>
+                <th class="py-3 px-4">Item Details</th>
+                <th class="py-3 px-4">Current Qty</th>
+                <th class="py-3 px-4">Min Reorder Level</th>
+                <th class="py-3 px-4">Status</th>
+                <th class="py-3 px-4 text-right">Quick Threshold Edit</th>
+              </tr>
+            </thead>
+            <tbody id="stock-matrix-body" class="divide-y divide-dark-600/50">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Inventory Adjustment Logs -->
+      <div class="glass-card rounded-xl p-5 border border-dark-600">
+        <h2 class="text-base font-bold text-white mb-3 flex items-center gap-2">
+          <i class="fa-solid fa-clock-rotate-left text-purple-400"></i> Recent Stock Adjustments & Write-Offs
+        </h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm text-slate-300">
+            <thead class="bg-dark-900/90 text-xs uppercase tracking-wider text-slate-400 border-b border-dark-600">
+              <tr>
+                <th class="py-2.5 px-4">Date & Time</th>
+                <th class="py-2.5 px-4">SKU / Item</th>
+                <th class="py-2.5 px-4">Type / Reason</th>
+                <th class="py-2.5 px-4 text-center">Quantity Lost</th>
+                <th class="py-2.5 px-4">Logged By</th>
+              </tr>
+            </thead>
+            <tbody id="adjustment-log-body" class="divide-y divide-dark-600/50 font-mono text-xs">
+              <!-- Dynamic Logs -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- MODULE 3: BARCODE & LABEL GENERATOR -->
+    <section id="module-barcodes" class="space-y-6 hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Controls Panel -->
+        <div class="glass-card p-5 rounded-xl border border-dark-600 space-y-4">
+          <h2 class="text-base font-bold text-white flex items-center gap-2 border-b border-dark-600 pb-3">
+            <i class="fa-solid fa-sliders text-brand-400"></i> Thermal Label Studio
+          </h2>
+
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Select SKU for Printing</label>
+            <select id="barcode-product-select" onchange="updateSingleBarcodePreview()" class="w-full glass-input p-2.5 rounded-lg text-sm bg-dark-900 text-slate-200">
+              <!-- Options populated by JS -->
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs text-slate-400 block mb-1">Label Width (mm)</label>
+              <input type="number" value="50" class="w-full glass-input p-2 rounded text-sm text-center font-mono" readonly>
+            </div>
+            <div>
+              <label class="text-xs text-slate-400 block mb-1">Label Height (mm)</label>
+              <input type="number" value="30" class="w-full glass-input p-2 rounded text-sm text-center font-mono" readonly>
+            </div>
+          </div>
+
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Print Batch Quantity</label>
+            <input type="number" id="barcode-print-qty" value="12" min="1" max="100" class="w-full glass-input p-2 rounded text-sm font-mono text-slate-200">
+          </div>
+
+          <div class="pt-2">
+            <button onclick="generateBatchPrintSheet()" class="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-2.5 rounded-lg text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20">
+              <i class="fa-solid fa-print"></i> Generate Batch Sheet
+            </button>
+          </div>
+        </div>
+
+        <!-- Single Preview Canvas -->
+        <div class="lg:col-span-2 glass-card p-5 rounded-xl border border-dark-600 flex flex-col items-center justify-center min-h-[300px]">
+          <p class="text-xs text-slate-400 uppercase tracking-widest mb-4 font-mono">Live Thermal Label Preview (50x30mm Standard)</p>
+          
+          <div id="single-label-preview" class="bg-white text-slate-900 p-4 rounded shadow-2xl w-72 flex flex-col items-center text-center border border-slate-300">
+            <h4 id="lbl-store" class="text-[10px] font-bold tracking-widest uppercase text-slate-500 border-b border-slate-200 pb-1 w-full">SUPER STORE MARKET</h4>
+            <h3 id="lbl-title" class="font-bold text-sm text-slate-900 line-clamp-1 mt-1">Select a Product</h3>
+            <div class="text-[11px] text-slate-600 flex justify-between w-full px-2 mt-0.5">
+              <span id="lbl-variant" class="font-semibold">Variant: -</span>
+              <span id="lbl-price" class="font-bold text-slate-950">$0.00</span>
+            </div>
+            
+            <svg id="barcode-svg" class="my-2 max-w-full"></svg>
+            
+            <div class="flex justify-between w-full text-[9px] text-slate-500 font-mono border-t border-slate-200 pt-1">
+              <span id="lbl-batch">B: -</span>
+              <span id="lbl-exp">EXP: -</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Batch Sheet Render Area -->
+      <div id="batch-print-wrapper" class="glass-card p-5 rounded-xl border border-dark-600 hidden">
+        <div class="flex justify-between items-center mb-4 border-b border-dark-600 pb-3">
+          <h3 class="text-sm font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-border-all text-brand-400"></i> Batch Grid Print View
+          </h3>
+          <button onclick="triggerPrint()" class="bg-brand-500 hover:bg-brand-600 text-white px-4 py-1.5 rounded text-xs font-bold flex items-center gap-2">
+            <i class="fa-solid fa-print"></i> Send to Printer
+          </button>
+        </div>
+
+        <div id="print-section" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 bg-dark-900 p-4 rounded-lg">
+          <!-- Batch labels generated here -->
+        </div>
+      </div>
+    </section>
+
+    <!-- MODULE 4: PURCHASE ORDERS & GRN INWARD AUDIT -->
+    <section id="module-orders" class="space-y-6 hidden">
+      <!-- Top Action Ribbon -->
+      <div class="flex justify-between items-center glass-card p-4 rounded-xl">
+        <div>
+          <h2 class="text-base font-bold text-white">Purchase Orders & Inward Goods Note (GRN)</h2>
+          <p class="text-xs text-slate-400">Issue supplier purchase orders and verify physical deliveries</p>
+        </div>
+        <button onclick="openCreatePOModal()" class="bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-brand-500/20">
+          <i class="fa-solid fa-file-circle-plus"></i> Create New PO
+        </button>
+      </div>
+
+      <!-- PO List Table -->
+      <div class="glass-card rounded-xl overflow-hidden border border-dark-600">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm text-slate-300">
+            <thead class="bg-dark-900/90 text-xs uppercase tracking-wider text-slate-400 border-b border-dark-600">
+              <tr>
+                <th class="py-3.5 px-4">PO Number</th>
+                <th class="py-3.5 px-4">Supplier</th>
+                <th class="py-3.5 px-4">Items Included</th>
+                <th class="py-3.5 px-4">Total Value</th>
+                <th class="py-3.5 px-4">Status</th>
+                <th class="py-3.5 px-4 text-right">Inward Audit Actions</th>
+              </tr>
+            </thead>
+            <tbody id="po-table-body" class="divide-y divide-dark-600/60 font-sans">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL 1: ADD / EDIT PRODUCT -->
+  <div id="modal-product" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="glass-card border border-dark-600 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+      <div class="px-6 py-4 border-b border-dark-600 flex justify-between items-center bg-dark-800">
+        <h3 id="modal-product-title" class="text-base font-bold text-white">Add New Superstore SKU</h3>
+        <button onclick="closeProductModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+      </div>
+
+      <form id="product-form" onsubmit="saveProduct(event)" class="p-6 overflow-y-auto space-y-4">
+        <input type="hidden" id="prod-id">
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Product Title *</label>
+            <input type="text" id="prod-title" required placeholder="e.g. Premium Basmati Rice 5kg" class="w-full glass-input p-2.5 rounded-lg text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">SKU Code *</label>
+            <input type="text" id="prod-sku" required placeholder="SKU-RICE-01" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Barcode (EAN/128) *</label>
+            <div class="flex gap-1">
+              <input type="text" id="prod-barcode" required placeholder="8901234567" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+              <button type="button" onclick="generateRandomBarcode()" class="bg-dark-600 hover:bg-dark-500 px-3 rounded text-xs text-slate-200" title="Auto-Generate Barcode"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
+            </div>
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Category *</label>
+            <select id="prod-category" required class="w-full glass-input p-2.5 rounded-lg text-sm bg-dark-900 text-slate-200">
+              <option value="Grocery">Grocery</option>
+              <option value="Beverage">Beverage</option>
+              <option value="Dairy">Dairy</option>
+              <option value="Personal Care">Personal Care</option>
+              <option value="Snacks">Snacks</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Brand</label>
+            <input type="text" id="prod-brand" placeholder="e.g. Nestlé / National" class="w-full glass-input p-2.5 rounded-lg text-sm">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Cost Price ($)</label>
+            <input type="number" step="0.01" id="prod-cost" required placeholder="10.00" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Retail Price ($)</label>
+            <input type="number" step="0.01" id="prod-retail" required placeholder="14.99" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Tax Rate (%)</label>
+            <input type="number" step="0.1" id="prod-tax" value="5.0" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Variant / Packaging</label>
+            <input type="text" id="prod-variant" placeholder="5 kg Bag / 1L Bottle" class="w-full glass-input p-2.5 rounded-lg text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Initial Stock Qty</label>
+            <input type="number" id="prod-stock" required value="50" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Reorder Threshold</label>
+            <input type="number" id="prod-reorder" required value="10" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Batch Number</label>
+            <input type="text" id="prod-batch" placeholder="BATCH-2026-X" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Expiry Date</label>
+            <input type="date" id="prod-expiry" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+          </div>
+        </div>
+
+        <div class="pt-4 border-t border-dark-600 flex justify-end gap-3">
+          <button type="button" onclick="closeProductModal()" class="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white">Cancel</button>
+          <button type="submit" class="bg-brand-500 hover:bg-brand-600 text-white px-5 py-2 rounded-lg text-sm font-bold shadow-lg shadow-brand-500/20">Save Product</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 2: DAMAGED / EXPIRED STOCK ADJUSTMENT -->
+  <div id="modal-adjustment" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="glass-card border border-dark-600 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+      <div class="px-6 py-4 border-b border-dark-600 flex justify-between items-center bg-dark-800">
+        <h3 class="text-base font-bold text-white flex items-center gap-2 text-rose-400">
+          <i class="fa-solid fa-triangle-exclamation"></i> Log Stock Loss / Write-Off
+        </h3>
+        <button onclick="closeAdjustmentModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+      </div>
+
+      <form onsubmit="saveAdjustment(event)" class="p-6 space-y-4">
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Select Product *</label>
+          <select id="adj-product-id" required class="w-full glass-input p-2.5 rounded-lg text-sm bg-dark-900 text-slate-200">
+            <!-- Dynamic items -->
+          </select>
+        </div>
+
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Quantity to Write Off *</label>
+          <input type="number" id="adj-qty" min="1" required value="1" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+        </div>
+
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Reason / Category *</label>
+          <select id="adj-reason" required class="w-full glass-input p-2.5 rounded-lg text-sm bg-dark-900 text-slate-200">
+            <option value="Expired Stock">Expired Stock</option>
+            <option value="Damaged in Transit">Damaged in Transit</option>
+            <option value="Customer Spoilage / Floor Loss">Customer Spoilage / Floor Loss</option>
+            <option value="Audit Variance Deficiency">Audit Variance Deficiency</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Logged By (Inspector)</label>
+          <input type="text" id="adj-user" value="Audit Supervisor" class="w-full glass-input p-2.5 rounded-lg text-sm">
+        </div>
+
+        <div class="pt-4 border-t border-dark-600 flex justify-end gap-3">
+          <button type="button" onclick="closeAdjustmentModal()" class="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white">Cancel</button>
+          <button type="submit" class="bg-rose-500 hover:bg-rose-600 text-white px-5 py-2 rounded-lg text-sm font-bold shadow-lg shadow-rose-500/20">Deduct & Record Log</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 3: CREATE PURCHASE ORDER -->
+  <div id="modal-po" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="glass-card border border-dark-600 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl">
+      <div class="px-6 py-4 border-b border-dark-600 flex justify-between items-center bg-dark-800">
+        <h3 class="text-base font-bold text-white">Create Purchase Order (PO)</h3>
+        <button onclick="closeCreatePOModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+      </div>
+
+      <form onsubmit="savePurchaseOrder(event)" class="p-6 space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Supplier Name *</label>
+            <input type="text" id="po-supplier" required placeholder="e.g. Metro Wholesale Foods" class="w-full glass-input p-2.5 rounded-lg text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Expected Delivery</label>
+            <input type="date" id="po-delivery-date" required class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+          </div>
+        </div>
+
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Select SKU to Order *</label>
+          <select id="po-product-id" required class="w-full glass-input p-2.5 rounded-lg text-sm bg-dark-900 text-slate-200">
+            <!-- Dynamic items -->
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Order Quantity *</label>
+            <input type="number" id="po-qty" min="1" value="100" required class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Agreed Cost / Unit ($)</label>
+            <input type="number" step="0.01" id="po-cost" required placeholder="10.00" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+          </div>
+        </div>
+
+        <div class="pt-4 border-t border-dark-600 flex justify-end gap-3">
+          <button type="button" onclick="closeCreatePOModal()" class="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white">Cancel</button>
+          <button type="submit" class="bg-brand-500 hover:bg-brand-600 text-white px-5 py-2 rounded-lg text-sm font-bold">Issue Purchase Order</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 4: GRN INWARD RECEIVING AUDIT -->
+  <div id="modal-grn" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="glass-card border border-dark-600 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
+      <div class="px-6 py-4 border-b border-dark-600 flex justify-between items-center bg-dark-800">
+        <h3 class="text-base font-bold text-white flex items-center gap-2 text-emerald-400">
+          <i class="fa-solid fa-clipboard-check"></i> Goods Received Note (GRN) Audit
+        </h3>
+        <button onclick="closeGRNModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+      </div>
+
+      <div class="p-6 space-y-4">
+        <input type="hidden" id="grn-po-id">
+        <div class="bg-dark-900 p-3 rounded-lg border border-dark-600 text-xs space-y-1 font-mono">
+          <p><span class="text-slate-400">PO Number:</span> <span id="grn-po-num" class="text-brand-400 font-bold"></span></p>
+          <p><span class="text-slate-400">Supplier:</span> <span id="grn-supplier" class="text-white"></span></p>
+          <p><span class="text-slate-400">Item:</span> <span id="grn-item-name" class="text-white"></span></p>
+          <p><span class="text-slate-400">Expected Qty:</span> <span id="grn-expected-qty" class="text-amber-400 font-bold"></span></p>
+        </div>
+
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Physically Received Quantity *</label>
+          <input type="number" id="grn-received-qty" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono text-emerald-400 font-bold text-lg">
+          <p class="text-[11px] text-slate-500 mt-1">This quantity will be instantly credited to the Master Inventory.</p>
+        </div>
+
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Assign Batch Tag for Delivery</label>
+          <input type="text" id="grn-batch-tag" value="GRN-INWARD-2026" class="w-full glass-input p-2.5 rounded-lg text-sm font-mono">
+        </div>
+
+        <div class="pt-4 border-t border-dark-600 flex justify-end gap-3">
+          <button type="button" onclick="closeGRNModal()" class="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white">Cancel</button>
+          <button onclick="processGRNConfirmation()" class="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-5 py-2 rounded-lg text-sm font-bold shadow-lg shadow-emerald-500/20">
+            Confirm GRN & Update Master Stock
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION SYSTEM -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2"></div>
+
+  <!-- JAVASCRIPT SYSTEM LOGIC -->
+  <script>
+    // INITIAL DUMMY MASTER DATA — now lives in assets/nexus-seed.js
+    // (single source of truth). NexusSeed.get() returns a fresh deep clone,
+    // so live state and the pristine seed are never aliased to each other.
+    const initialProducts = NexusSeed.get('devhawx_products');
+
+        const initialAdjustments = NexusSeed.get('devhawx_adjustments');
+
+        const initialPOs = NexusSeed.get('devhawx_pos');
+
+    // STATE MANAGEMENT
+    // Deep-clones the demo seed so live state never aliases it, and swallows
+    // corrupt localStorage values instead of bricking the page on load.
+    function loadState(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw !== null) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (e) { /* corrupt value — fall through and reseed */ }
+
+      // No (or unusable) saved state: fall back to the demo seed AND persist it.
+      // Persisting matters because the Dashboard KPI cards read these exact
+      // localStorage keys from a separate page — without this they showed "—"
+      // until the user happened to edit something here.
+      const seed = JSON.parse(JSON.stringify(fallback));
+      try { localStorage.setItem(key, JSON.stringify(seed)); } catch (e) { /* private mode */ }
+      return seed;
+    }
+
+    let products = loadState('devhawx_products', initialProducts);
+    let adjustments = loadState('devhawx_adjustments', initialAdjustments);
+    let purchaseOrders = loadState('devhawx_pos', initialPOs);
+
+    // INITIALIZATION
+    window.onload = function() {
+      updateClock();
+      setInterval(updateClock, 1000);
+      renderAll();
+
+      // Open the tab requested by the sidebar deep-link (e.g. inventory-os.html#barcodes)
+      const hashTab = location.hash.replace('#', '');
+      switchTab(INV_TABS.includes(hashTab) ? hashTab : 'catalog');
+    };
+
+    function saveState() {
+      localStorage.setItem('devhawx_products', JSON.stringify(products));
+      localStorage.setItem('devhawx_adjustments', JSON.stringify(adjustments));
+      localStorage.setItem('devhawx_pos', JSON.stringify(purchaseOrders));
+      renderAll();
+    }
+
+    function resetToDefaults() {
+      if(confirm("Reset all store inventory, POs, and logs back to default demo state?")) {
+        // NexusSeed.get() returns a fresh deep clone, so the seed data is never
+        // aliased to live state (which would have made the reset a no-op).
+        products = NexusSeed.get('devhawx_products');
+        adjustments = NexusSeed.get('devhawx_adjustments');
+        purchaseOrders = NexusSeed.get('devhawx_pos');
+        saveState();
+        showToast("System state reset to defaults", "info");
+      }
+    }
+
+    function renderAll() {
+      updateTopMetrics();
+      renderCatalogTable();
+      renderStockMatrix();
+      renderAdjustmentLogs();
+      populateBarcodeSelect();
+      renderPOTable();
+    }
+
+    // CLOCK
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('live-clock').innerText = now.toLocaleTimeString();
+      document.getElementById('live-date').innerText = now.toISOString().split('T')[0];
+    }
+
+    // NAVIGATION TABS (tabs live in the shared sidebar)
+    const INV_TABS = ['catalog', 'movement', 'barcodes', 'orders'];
+
+    function switchTab(tabId) {
+      if (!INV_TABS.includes(tabId)) tabId = 'catalog';
+
+      ['catalog', 'movement', 'barcodes', 'orders'].forEach(m => {
+        document.getElementById(`module-${m}`).classList.add('hidden');
+      });
+      document.getElementById(`module-${tabId}`).classList.remove('hidden');
+
+      if (location.hash !== `#${tabId}`) history.replaceState(null, '', `#${tabId}`);
+      if (window.NexusNav) NexusNav.sync('inventory', tabId);
+
+      if (tabId === 'barcodes') updateSingleBarcodePreview();
+    }
+
+    /* sidebar hook: switch tabs WITHOUT reloading the page */
+    window.NEXUS_ROUTE_TAB = switchTab;
+
+    window.addEventListener('hashchange', () => {
+      const t = location.hash.replace('#', '');
+      if (INV_TABS.includes(t)) {
+        switchTab(t);
+      } else {
+        // Unknown tab id — restore the URL to whatever is actually on screen
+        const active = INV_TABS.find(m => !document.getElementById(`module-${m}`).classList.contains('hidden')) || 'catalog';
+        history.replaceState(null, '', `#${active}`);
+      }
+    });
+
+    // METRICS
+    function updateTopMetrics() {
+      document.getElementById('stat-total-skus').innerText = products.length;
+      
+      const lowStockCount = products.filter(p => p.stock <= p.reorder).length;
+      document.getElementById('stat-low-stock').innerText = lowStockCount;
+
+      const totalValuation = products.reduce((acc, p) => acc + (p.stock * p.cost), 0);
+      document.getElementById('stat-valuation').innerText = `$${totalValuation.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+
+      const pendingPOs = purchaseOrders.filter(po => po.status === 'Pending').length;
+      document.getElementById('stat-pending-pos').innerText = pendingPOs;
+
+      // Movement Metrics
+      document.getElementById('reorder-count-val').innerText = `${lowStockCount} Items`;
+      const healthPct = (((products.length - lowStockCount) / (products.length || 1)) * 100).toFixed(1);
+      document.getElementById('health-index-val').innerText = `${healthPct}%`;
+    }
+
+    // MODULE 1: PRODUCT CATALOG
+    function renderCatalogTable() {
+      const tbody = document.getElementById('catalog-table-body');
+      const search = document.getElementById('catalog-search').value.toLowerCase();
+      const category = document.getElementById('filter-category').value;
+      const statusFilter = document.getElementById('filter-stock-status').value;
+
+      let filtered = products.filter(p => {
+        const matchesSearch = p.title.toLowerCase().includes(search) || p.sku.toLowerCase().includes(search) || p.barcode.includes(search);
+        const matchesCategory = category === "" || p.category === category;
+        
+        let matchesStatus = true;
+        if(statusFilter === 'instock') matchesStatus = p.stock > p.reorder;
+        if(statusFilter === 'low') matchesStatus = p.stock <= p.reorder && p.stock > 0;
+        if(statusFilter === 'out') matchesStatus = p.stock === 0;
+
+        return matchesSearch && matchesCategory && matchesStatus;
+      });
+
+      tbody.innerHTML = filtered.map(p => {
+        let stockBadge = p.stock === 0 
+          ? `<span class="bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-0.5 rounded text-[10px] font-bold">OUT OF STOCK</span>`
+          : p.stock <= p.reorder 
+            ? `<span class="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[10px] font-bold">LOW STOCK (${p.stock})</span>`
+            : `<span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold">${p.stock} IN STOCK</span>`;
+
+        return `
+          <tr class="hover:bg-dark-800/50 transition-colors">
+            <td class="py-3 px-4">
+              <div class="font-bold text-white">${p.title}</div>
+              <div class="text-xs text-slate-400 font-mono">SKU: ${p.sku} | Barcode: ${p.barcode}</div>
+            </td>
+            <td class="py-3 px-4">
+              <span class="inline-block px-2 py-0.5 bg-dark-900 border border-dark-600 rounded text-xs text-slate-300 mb-1">${p.category}</span>
+              <div class="text-xs text-slate-400">${p.variant || 'Standard'} ${p.brand ? '• ' + p.brand : ''}</div>
+            </td>
+            <td class="py-3 px-4 font-mono text-xs">
+              <div class="text-slate-400">Cost: $${parseFloat(p.cost).toFixed(2)}</div>
+              <div class="text-emerald-400 font-bold">Retail: $${parseFloat(p.retail).toFixed(2)}</div>
+            </td>
+            <td class="py-3 px-4 text-xs font-mono">
+              <div class="text-slate-300">B: ${p.batch || 'N/A'}</div>
+              <div class="text-slate-400">EXP: ${p.expiry || 'N/A'}</div>
+            </td>
+            <td class="py-3 px-4 text-center">
+              ${stockBadge}
+            </td>
+            <td class="py-3 px-4 text-right space-x-2">
+              <button onclick="editProduct('${p.id}')" class="text-slate-400 hover:text-brand-400 transition-colors" title="Edit SKU">
+                <i class="fa-solid fa-pen-to-square"></i>
+              </button>
+              <button onclick="deleteProduct('${p.id}')" class="text-slate-400 hover:text-rose-400 transition-colors" title="Delete SKU">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      if(filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-slate-500 text-sm">No SKUs matching your search filter parameters.</td></tr>`;
+      }
+    }
+
+    // MODAL EDIT/ADD PRODUCT
+    function openProductModal() {
+      document.getElementById('modal-product-title').innerText = "Add New Superstore SKU";
+      document.getElementById('product-form').reset();
+      document.getElementById('prod-id').value = "";
+      document.getElementById('modal-product').classList.remove('hidden');
+    }
+
+    function closeProductModal() {
+      document.getElementById('modal-product').classList.add('hidden');
+    }
+
+    function generateRandomBarcode() {
+      document.getElementById('prod-barcode').value = '890' + Math.floor(10000000 + Math.random() * 90000000);
+    }
+
+    function editProduct(id) {
+      const p = products.find(x => x.id === id);
+      if(!p) return;
+
+      document.getElementById('modal-product-title').innerText = `Edit Master Item (${p.sku})`;
+      document.getElementById('prod-id').value = p.id;
+      document.getElementById('prod-title').value = p.title;
+      document.getElementById('prod-sku').value = p.sku;
+      document.getElementById('prod-barcode').value = p.barcode;
+      document.getElementById('prod-category').value = p.category;
+      document.getElementById('prod-brand').value = p.brand || '';
+      document.getElementById('prod-cost').value = p.cost;
+      document.getElementById('prod-retail').value = p.retail;
+      document.getElementById('prod-tax').value = p.tax || 5.0;
+      document.getElementById('prod-variant').value = p.variant || '';
+      document.getElementById('prod-stock').value = p.stock;
+      document.getElementById('prod-reorder').value = p.reorder;
+      document.getElementById('prod-batch').value = p.batch || '';
+      document.getElementById('prod-expiry').value = p.expiry || '';
+
+      document.getElementById('modal-product').classList.remove('hidden');
+    }
+
+    function saveProduct(e) {
+      e.preventDefault();
+      const id = document.getElementById('prod-id').value;
+
+      const newProd = {
+        id: id || "P-" + Math.floor(100 + Math.random() * 900),
+        title: document.getElementById('prod-title').value,
+        sku: document.getElementById('prod-sku').value,
+        barcode: document.getElementById('prod-barcode').value,
+        category: document.getElementById('prod-category').value,
+        brand: document.getElementById('prod-brand').value,
+        cost: parseFloat(document.getElementById('prod-cost').value),
+        retail: parseFloat(document.getElementById('prod-retail').value),
+        tax: parseFloat(document.getElementById('prod-tax').value),
+        variant: document.getElementById('prod-variant').value,
+        stock: parseInt(document.getElementById('prod-stock').value),
+        reorder: parseInt(document.getElementById('prod-reorder').value),
+        batch: document.getElementById('prod-batch').value,
+        expiry: document.getElementById('prod-expiry').value,
+      };
+
+      if(id) {
+        const idx = products.findIndex(x => x.id === id);
+        if (idx === -1) {
+          // Stale modal: the record it was editing no longer exists
+          showToast("That SKU could not be found — nothing was saved", "error");
+          return;
+        }
+        products[idx] = newProd;
+        showToast("SKU Master record updated successfully", "success");
+      } else {
+        products.push(newProd);
+        showToast("New SKU registered in catalog", "success");
+      }
+
+      saveState();
+      closeProductModal();
+    }
+
+    function deleteProduct(id) {
+      if(confirm("Are you sure you want to remove this SKU from Master Catalog?")) {
+        products = products.filter(p => p.id !== id);
+        saveState();
+        showToast("Product deleted from database", "info");
+      }
+    }
+
+    // MODULE 2: STOCK MOVEMENT & ADJUSTMENT LOGS
+    function renderStockMatrix() {
+      const tbody = document.getElementById('stock-matrix-body');
+      tbody.innerHTML = products.map(p => {
+        const isLow = p.stock <= p.reorder;
+        return `
+          <tr class="hover:bg-dark-800/40 font-mono text-xs">
+            <td class="py-2.5 px-4 font-sans">
+              <div class="font-bold text-white text-sm">${p.title}</div>
+              <div class="text-slate-400 font-mono text-xs">${p.sku}</div>
+            </td>
+            <td class="py-2.5 px-4 font-bold text-sm ${isLow ? 'text-amber-400' : 'text-slate-100'}">
+              ${p.stock} units
+            </td>
+            <td class="py-2.5 px-4 text-slate-400">
+              <span class="text-slate-200">${p.reorder}</span> threshold
+            </td>
+            <td class="py-2.5 px-4">
+              ${isLow ? '<span class="text-amber-400 font-bold flex items-center gap-1"><i class="fa-solid fa-triangle-exclamation"></i> REORDER TRIGGERED</span>' : '<span class="text-emerald-400 font-bold">OPTIMAL</span>'}
+            </td>
+            <td class="py-2.5 px-4 text-right">
+              <input type="number" value="${p.reorder}" onchange="updateReorderLevel('${p.id}', this.value)" class="w-20 glass-input px-2 py-1 rounded text-center text-xs">
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function updateReorderLevel(id, val) {
+      const p = products.find(x => x.id === id);
+      if(p) {
+        p.reorder = parseInt(val) || 0;
+        saveState();
+        showToast(`Reorder threshold updated for ${p.sku}`, "info");
+      }
+    }
+
+    function renderAdjustmentLogs() {
+      const tbody = document.getElementById('adjustment-log-body');
+      tbody.innerHTML = adjustments.map(a => `
+        <tr class="hover:bg-dark-800/40">
+          <td class="py-2.5 px-4 text-slate-400">${a.date}</td>
+          <td class="py-2.5 px-4 text-slate-200 font-sans font-bold">${a.title} <span class="font-mono text-xs text-slate-400">(${a.sku})</span></td>
+          <td class="py-2.5 px-4 text-rose-400 font-sans">${a.reason}</td>
+          <td class="py-2.5 px-4 text-center font-bold text-rose-400">-${a.qty}</td>
+          <td class="py-2.5 px-4 text-slate-400 font-sans">${a.user}</td>
+        </tr>
+      `).join('');
+    }
+
+    function openAdjustmentModal() {
+      const select = document.getElementById('adj-product-id');
+      select.innerHTML = products.map(p => `<option value="${p.id}">${p.title} (Stock: ${p.stock})</option>`).join('');
+      document.getElementById('modal-adjustment').classList.remove('hidden');
+    }
+
+    function closeAdjustmentModal() {
+      document.getElementById('modal-adjustment').classList.add('hidden');
+    }
+
+    function saveAdjustment(e) {
+      e.preventDefault();
+      const pId = document.getElementById('adj-product-id').value;
+      const qty = parseInt(document.getElementById('adj-qty').value);
+      const reason = document.getElementById('adj-reason').value;
+      const user = document.getElementById('adj-user').value;
+
+      const p = products.find(x => x.id === pId);
+      if(!p) return;
+
+      if(qty > p.stock) {
+        alert("Cannot write-off more quantity than available in stock!");
+        return;
+      }
+
+      // Subtract from inventory
+      p.stock -= qty;
+
+      // Log entry
+      const now = new Date();
+      adjustments.unshift({
+        id: "ADJ-" + Math.floor(1000 + Math.random() * 9000),
+        date: now.toISOString().replace('T', ' ').substring(0, 16),
+        sku: p.sku,
+        title: p.title,
+        qty: qty,
+        reason: reason,
+        user: user
+      });
+
+      saveState();
+      closeAdjustmentModal();
+      showToast(`Logged loss of ${qty} units for ${p.sku}`, "warning");
+    }
+
+    // MODULE 3: BARCODE & LABEL STUDIO
+    function populateBarcodeSelect() {
+      const select = document.getElementById('barcode-product-select');
+      select.innerHTML = products.map(p => `<option value="${p.id}">${p.title} [${p.barcode}]</option>`).join('');
+    }
+
+    function updateSingleBarcodePreview() {
+      const pId = document.getElementById('barcode-product-select').value;
+      const p = products.find(x => x.id === pId) || products[0];
+      if(!p) return;
+
+      document.getElementById('lbl-title').innerText = p.title;
+      document.getElementById('lbl-variant').innerText = p.variant ? `Size: ${p.variant}` : 'Standard';
+      document.getElementById('lbl-price').innerText = `$${parseFloat(p.retail).toFixed(2)}`;
+      document.getElementById('lbl-batch').innerText = `B: ${p.batch || 'N/A'}`;
+      document.getElementById('lbl-exp').innerText = `EXP: ${p.expiry || 'N/A'}`;
+
+      // Render barcode using JsBarcode
+      JsBarcode("#barcode-svg", p.barcode, {
+        format: "CODE128",
+        width: 1.8,
+        height: 40,
+        displayValue: true,
+        fontSize: 11,
+        margin: 2
+      });
+    }
+
+    function generateBatchPrintSheet() {
+      const pId = document.getElementById('barcode-product-select').value;
+      const qty = parseInt(document.getElementById('barcode-print-qty').value) || 12;
+      const p = products.find(x => x.id === pId);
+      if(!p) return;
+
+      const container = document.getElementById('print-section');
+      container.innerHTML = '';
+
+      for(let i = 0; i < qty; i++) {
+        const labelDiv = document.createElement('div');
+        labelDiv.className = "label-card bg-white text-slate-900 p-3 rounded shadow border border-slate-200 flex flex-col items-center text-center";
+        labelDiv.innerHTML = `
+          <h4 class="text-[8px] font-bold tracking-widest uppercase text-slate-500 border-b border-slate-200 pb-0.5 w-full">SUPER STORE MARKET</h4>
+          <h3 class="font-bold text-xs text-slate-900 line-clamp-1 mt-0.5">${p.title}</h3>
+          <div class="text-[9px] text-slate-600 flex justify-between w-full px-1">
+            <span>${p.variant || 'Std'}</span>
+            <span class="font-bold text-slate-950">$${parseFloat(p.retail).toFixed(2)}</span>
+          </div>
+          <svg class="batch-barcode-svg-${i} my-1 max-w-full"></svg>
+          <div class="flex justify-between w-full text-[8px] text-slate-500 font-mono border-t border-slate-200 pt-0.5">
+            <span>B:${p.batch || 'NA'}</span>
+            <span>EXP:${p.expiry || 'NA'}</span>
+          </div>
+        `;
+        container.appendChild(labelDiv);
+
+        JsBarcode(`.batch-barcode-svg-${i}`, p.barcode, {
+          format: "CODE128",
+          width: 1.4,
+          height: 30,
+          displayValue: true,
+          fontSize: 9,
+          margin: 1
+        });
+      }
+
+      document.getElementById('batch-print-wrapper').classList.remove('hidden');
+      showToast(`Generated batch sheet with ${qty} thermal stickers`, "info");
+    }
+
+    function triggerPrint() {
+      printNode(document.getElementById('print-section'));
+    }
+
+    // Lifts a node to be a direct child of <body> for the duration of the print
+    // run, then puts it back. Nested inside .glass-card it inherits that
+    // element as its containing block (backdrop-filter) and prints hundreds of
+    // pixels down the page, leaving a blank band at the top.
+    function printNode(el) {
+      if (!el) return;
+      const anchor = document.createComment('print-anchor');
+      el.parentNode.insertBefore(anchor, el);
+      document.body.appendChild(el);
+      window.print();                 // blocking — returns when the dialog closes
+      document.body.removeChild(el);
+      anchor.parentNode.insertBefore(el, anchor);
+      anchor.parentNode.removeChild(anchor);
+    }
+
+    // MODULE 4: PURCHASE ORDERS & GRN INWARD
+    function renderPOTable() {
+      const tbody = document.getElementById('po-table-body');
+      tbody.innerHTML = purchaseOrders.map(po => {
+        const p = products.find(x => x.id === po.productId);
+        const totalCost = (po.qty * po.cost).toFixed(2);
+        const isReceived = po.status === 'Received';
+
+        return `
+          <tr class="hover:bg-dark-800/50">
+            <td class="py-3 px-4 font-mono font-bold text-brand-400">${po.id}</td>
+            <td class="py-3 px-4 font-semibold text-white">${po.supplier}</td>
+            <td class="py-3 px-4">
+              <div class="text-white font-medium">${po.productTitle}</div>
+              <div class="text-xs text-slate-400 font-mono">Ordered Qty: ${po.qty} units @ $${po.cost}/u</div>
+            </td>
+            <td class="py-3 px-4 font-mono text-emerald-400 font-bold">$${totalCost}</td>
+            <td class="py-3 px-4">
+              ${isReceived 
+                ? '<span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold">GRN RECEIVED</span>' 
+                : '<span class="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[10px] font-bold">IN-TRANSIT / PENDING</span>'}
+            </td>
+            <td class="py-3 px-4 text-right">
+              ${!isReceived ? `
+                <button onclick="openGRNModal('${po.id}')" class="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded text-xs font-bold transition-all flex items-center gap-1.5 ml-auto">
+                  <i class="fa-solid fa-truck-pickup"></i> Process GRN Inward
+                </button>
+              ` : `
+                <span class="text-xs text-slate-500 italic"><i class="fa-solid fa-check-double text-emerald-400"></i> Audit Verified</span>
+              `}
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function openCreatePOModal() {
+      const select = document.getElementById('po-product-id');
+      select.innerHTML = products.map(p => `<option value="${p.id}">${p.title} (Current Stock: ${p.stock})</option>`).join('');
+      document.getElementById('modal-po').classList.remove('hidden');
+    }
+
+    function closeCreatePOModal() {
+      document.getElementById('modal-po').classList.add('hidden');
+    }
+
+    function savePurchaseOrder(e) {
+      e.preventDefault();
+      const supplier = document.getElementById('po-supplier').value;
+      const delDate = document.getElementById('po-delivery-date').value;
+      const pId = document.getElementById('po-product-id').value;
+      const qty = parseInt(document.getElementById('po-qty').value);
+      const cost = parseFloat(document.getElementById('po-cost').value);
+
+      const p = products.find(x => x.id === pId);
+
+      const newPO = {
+        id: "PO-" + Math.floor(9000 + Math.random() * 1000),
+        supplier: supplier,
+        productId: pId,
+        productTitle: p ? p.title : "Unknown Item",
+        qty: qty,
+        cost: cost,
+        status: "Pending",
+        deliveryDate: delDate
+      };
+
+      purchaseOrders.unshift(newPO);
+      saveState();
+      closeCreatePOModal();
+      showToast(`Purchase Order ${newPO.id} issued to supplier`, "success");
+    }
+
+    function openGRNModal(poId) {
+      const po = purchaseOrders.find(x => x.id === poId);
+      if(!po) return;
+
+      document.getElementById('grn-po-id').value = po.id;
+      document.getElementById('grn-po-num').innerText = po.id;
+      document.getElementById('grn-supplier').innerText = po.supplier;
+      document.getElementById('grn-item-name').innerText = po.productTitle;
+      document.getElementById('grn-expected-qty').innerText = `${po.qty} Units`;
+      document.getElementById('grn-received-qty').value = po.qty;
+
+      document.getElementById('modal-grn').classList.remove('hidden');
+    }
+
+    function closeGRNModal() {
+      document.getElementById('modal-grn').classList.add('hidden');
+    }
+
+    function processGRNConfirmation() {
+      const poId = document.getElementById('grn-po-id').value;
+      const recQty = parseInt(document.getElementById('grn-received-qty').value) || 0;
+      const batchTag = document.getElementById('grn-batch-tag').value;
+
+      const po = purchaseOrders.find(x => x.id === poId);
+      if(!po) return;
+
+      const p = products.find(x => x.id === po.productId);
+      if(p) {
+        p.stock += recQty;
+        if(batchTag) p.batch = batchTag;
+      }
+
+      po.status = "Received";
+
+      saveState();
+      closeGRNModal();
+      showToast(`GRN Approved: ${recQty} units credited to inventory stock`, "success");
+    }
+
+    // TOAST NOTIFICATIONS
+    function showToast(message, type = "info") {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      
+      let bg = "bg-dark-800 border-brand-500 text-white";
+      let icon = "fa-circle-info text-brand-400";
+      if(type === "success") { bg = "bg-dark-800 border-emerald-500 text-white"; icon = "fa-circle-check text-emerald-400"; }
+      if(type === "warning") { bg = "bg-dark-800 border-rose-500 text-white"; icon = "fa-triangle-exclamation text-rose-400"; }
+
+      toast.className = `${bg} border-l-4 p-3.5 rounded-lg shadow-xl text-xs flex items-center gap-3 transition-all transform translate-y-2 opacity-0 font-medium min-w-[280px]`;
+      toast.innerHTML = `<i class="fa-solid ${icon} text-base"></i> <span>${message}</span>`;
+
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+  </script>
+</body>
+</html>
